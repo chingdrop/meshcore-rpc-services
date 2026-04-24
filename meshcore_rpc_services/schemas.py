@@ -69,13 +69,13 @@ class Response(BaseModel):
 
     @classmethod
     def error(
-        cls,
-        *,
-        request_id: str,
-        request_type: str,
-        to: str,
-        code: str,
-        message: str,
+            cls,
+            *,
+            request_id: str,
+            request_type: str,
+            to: str,
+            code: str,
+            message: str,
     ) -> "Response":
         return cls(
             id=request_id,

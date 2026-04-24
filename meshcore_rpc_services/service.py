@@ -164,12 +164,12 @@ class Service:
     # ------------------------------------------------------------------
 
     async def _publish_and_finalize(
-        self,
-        request: Request,
-        response: Response,
-        *,
-        final_state: str,
-        error_code: Optional[str] = None,
+            self,
+            request: Request,
+            response: Response,
+            *,
+            final_state: str,
+            error_code: Optional[str] = None,
     ) -> None:
         topic = self._cfg.mqtt.response_topic(request.from_)
         try:

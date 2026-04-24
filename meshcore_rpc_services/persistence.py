@@ -7,14 +7,12 @@ Keeps the dep surface tiny — no aiosqlite needed.
 from __future__ import annotations
 
 import asyncio
-import json
 import sqlite3
 import time
 from pathlib import Path
 from typing import Optional
 
 from meshcore_rpc_services.schemas import Request, Response
-
 
 # Lifecycle state names. Kept as module-level constants so handlers and tests
 # don't need to guess strings.
@@ -25,32 +23,69 @@ RESPONSE_PUBLISHED = "response_published"
 TIMEOUT = "timeout"
 ERROR = "error"
 
-
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS requests (
-    id            TEXT PRIMARY KEY,
-    node_id       TEXT NOT NULL,
-    type          TEXT NOT NULL,
-    ttl_s         INTEGER NOT NULL,
-    received_at   REAL    NOT NULL,
-    completed_at  REAL,
-    final_state   TEXT,
-    error_code    TEXT,
-    request_json  TEXT NOT NULL,
-    response_json TEXT
-);
+          CREATE TABLE IF NOT EXISTS requests
+          (
+              id
+              TEXT
+              PRIMARY
+              KEY,
+              node_id
+              TEXT
+              NOT
+              NULL,
+              type
+              TEXT
+              NOT
+              NULL,
+              ttl_s
+              INTEGER
+              NOT
+              NULL,
+              received_at
+              REAL
+              NOT
+              NULL,
+              completed_at
+              REAL,
+              final_state
+              TEXT,
+              error_code
+              TEXT,
+              request_json
+              TEXT
+              NOT
+              NULL,
+              response_json
+              TEXT
+          );
 
-CREATE TABLE IF NOT EXISTS request_events (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    request_id  TEXT NOT NULL,
-    state       TEXT NOT NULL,
-    detail      TEXT,
-    ts          REAL NOT NULL
-);
+          CREATE TABLE IF NOT EXISTS request_events
+          (
+              id
+              INTEGER
+              PRIMARY
+              KEY
+              AUTOINCREMENT,
+              request_id
+              TEXT
+              NOT
+              NULL,
+              state
+              TEXT
+              NOT
+              NULL,
+              detail
+              TEXT,
+              ts
+              REAL
+              NOT
+              NULL
+          );
 
-CREATE INDEX IF NOT EXISTS idx_events_req ON request_events(request_id);
-CREATE INDEX IF NOT EXISTS idx_req_received ON requests(received_at);
-"""
+          CREATE INDEX IF NOT EXISTS idx_events_req ON request_events(request_id);
+          CREATE INDEX IF NOT EXISTS idx_req_received ON requests(received_at); \
+          """
 
 
 class Store:
@@ -93,7 +128,7 @@ class Store:
             )
 
     def record_event(
-        self, request_id: str, state: str, detail: Optional[str] = None
+            self, request_id: str, state: str, detail: Optional[str] = None
     ) -> None:
         with self._conn:
             self._conn.execute(
@@ -103,11 +138,11 @@ class Store:
             )
 
     def record_completion(
-        self,
-        request_id: str,
-        final_state: str,
-        response: Optional[Response] = None,
-        error_code: Optional[str] = None,
+            self,
+            request_id: str,
+            final_state: str,
+            response: Optional[Response] = None,
+            error_code: Optional[str] = None,
     ) -> None:
         now = time.time()
         response_json = response.to_json() if response else None
@@ -144,16 +179,16 @@ class AsyncStore:
         await asyncio.to_thread(self._store.record_received, request, ttl_s)
 
     async def record_event(
-        self, request_id: str, state: str, detail: Optional[str] = None
+            self, request_id: str, state: str, detail: Optional[str] = None
     ) -> None:
         await asyncio.to_thread(self._store.record_event, request_id, state, detail)
 
     async def record_completion(
-        self,
-        request_id: str,
-        final_state: str,
-        response: Optional[Response] = None,
-        error_code: Optional[str] = None,
+            self,
+            request_id: str,
+            final_state: str,
+            response: Optional[Response] = None,
+            error_code: Optional[str] = None,
     ) -> None:
         await asyncio.to_thread(
             self._store.record_completion,
