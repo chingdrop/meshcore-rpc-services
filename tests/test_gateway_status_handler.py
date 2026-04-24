@@ -1,8 +1,8 @@
 import pytest
 
-from meshcore_app.handlers.base import HandlerContext
-from meshcore_app.handlers.gateway_status import handler as gw_handler
-from meshcore_app.schemas import Request
+from meshcore_rpc_services.handlers.base import HandlerContext
+from meshcore_rpc_services.handlers.gateway_status import handler as gw_handler
+from meshcore_rpc_services.schemas import Request
 
 
 class _StubBus:

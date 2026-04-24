@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from meshcore_app.timeouts import PendingTracker, clamp_ttl
+from meshcore_rpc_services.timeouts import PendingTracker, clamp_ttl
 
 
 def test_clamp_ttl_defaults_and_caps():

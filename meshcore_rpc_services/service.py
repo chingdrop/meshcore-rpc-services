@@ -13,16 +13,16 @@ from typing import Optional
 
 from pydantic import ValidationError
 
-from meshcore_app import errors, persistence
-from meshcore_app.config import AppConfig
-from meshcore_app.errors import RpcError
-from meshcore_app.handlers import DEFAULT_HANDLERS
-from meshcore_app.handlers.base import HandlerContext
-from meshcore_app.mqtt_bus import MqttBus
-from meshcore_app.persistence import AsyncStore, Store
-from meshcore_app.router import Router
-from meshcore_app.schemas import Request, Response
-from meshcore_app.timeouts import PendingTracker, clamp_ttl
+from meshcore_rpc_services import errors, persistence
+from meshcore_rpc_services.config import AppConfig
+from meshcore_rpc_services.errors import RpcError
+from meshcore_rpc_services.handlers import DEFAULT_HANDLERS
+from meshcore_rpc_services.handlers.base import HandlerContext
+from meshcore_rpc_services.mqtt_bus import MqttBus
+from meshcore_rpc_services.persistence import AsyncStore, Store
+from meshcore_rpc_services.router import Router
+from meshcore_rpc_services.schemas import Request, Response
+from meshcore_rpc_services.timeouts import PendingTracker, clamp_ttl
 
 log = logging.getLogger(__name__)
 

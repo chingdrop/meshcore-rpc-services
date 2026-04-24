@@ -1,5 +1,5 @@
-from meshcore_app.persistence import Store
-from meshcore_app.schemas import Request, Response
+from meshcore_rpc_services.persistence import Store
+from meshcore_rpc_services.schemas import Request, Response
 
 
 def _req(id_="r1", type_="ping", from_="n1"):

@@ -11,9 +11,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
-    from meshcore_app.mqtt_bus import MqttBus
-    from meshcore_app.persistence import AsyncStore
-    from meshcore_app.schemas import Request, Response
+    from meshcore_rpc_services.mqtt_bus import MqttBus
+    from meshcore_rpc_services.persistence import AsyncStore
+    from meshcore_rpc_services.schemas import Request, Response
 
 
 @dataclass

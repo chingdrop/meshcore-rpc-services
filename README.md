@@ -55,8 +55,8 @@ Error codes: `bad_request`, `unknown_type`, `timeout`, `internal`.
 ```bash
 pip install -e ".[dev]"
 cp config.example.yaml config.yaml  # edit as needed
-meshcore-rpc-services initdb --config config.yaml
-meshcore-rpc-services run    --config config.yaml
+python -m meshcore_rpc_services initdb --config config.yaml
+python -m meshcore_rpc_services run    --config config.yaml
 ```
 
 Env overrides: every setting is overridable via `MESHCORE_RPC_SERVICES_*`, e.g.
@@ -74,7 +74,7 @@ broker required — the MQTT bus is integration-tested separately (TODO).
 ## Layout
 
 ```
-meshcore_app/
+meshcore_rpc_services/
   config.py       # settings, YAML + env
   schemas.py      # Request / Response pydantic models
   errors.py       # error codes + RpcError
@@ -92,8 +92,8 @@ meshcore_app/
 
 ## Adding a handler
 
-1. Create `meshcore_app/handlers/<name>.py` with a class exposing `type` and `async def handle(request, ctx)`, plus a module-level `handler` instance.
-2. Import it in `meshcore_app/handlers/__init__.py` and append to `DEFAULT_HANDLERS`.
+1. Create `meshcore_rpc_services/handlers/<name>.py` with a class exposing `type` and `async def handle(request, ctx)`, plus a module-level `handler` instance.
+2. Import it in `meshcore_rpc_services/handlers/__init__.py` and append to `DEFAULT_HANDLERS`.
 3. Add a test.
 
 That's it. No framework changes needed.

@@ -9,9 +9,9 @@ from typing import Optional
 
 import click
 
-from meshcore_app.config import AppConfig
-from meshcore_app.persistence import Store
-from meshcore_app.service import Service
+from meshcore_rpc_services.config import AppConfig
+from meshcore_rpc_services.persistence import Store
+from meshcore_rpc_services.service import Service
 
 
 def _configure_logging(level: str) -> None:

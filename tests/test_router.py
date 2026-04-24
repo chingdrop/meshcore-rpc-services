@@ -1,7 +1,7 @@
 import pytest
 
-from meshcore_app.handlers import DEFAULT_HANDLERS
-from meshcore_app.router import Router
+from meshcore_rpc_services.handlers import DEFAULT_HANDLERS
+from meshcore_rpc_services.router import Router
 
 
 def test_router_resolves_default_handlers():

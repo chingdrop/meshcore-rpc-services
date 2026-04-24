@@ -23,10 +23,10 @@ dev = [
 ]
 
 [project.scripts]
-meshcore-rpc-services = "meshcore_app.cli:main"
+meshcore-rpc-services = "meshcore_rpc_services.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["meshcore_app*"]
+include = ["meshcore_rpc_services*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

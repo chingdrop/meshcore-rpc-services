@@ -9,8 +9,8 @@ Response body is kept terse for LoRa.
 
 from __future__ import annotations
 
-from meshcore_app.handlers.base import Handler, HandlerContext
-from meshcore_app.schemas import Request, Response
+from meshcore_rpc_services.handlers.base import Handler, HandlerContext
+from meshcore_rpc_services.schemas import Request, Response
 
 
 class GatewayStatusHandler:

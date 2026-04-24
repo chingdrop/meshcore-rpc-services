@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
-from meshcore_app.handlers.base import Handler
+from meshcore_rpc_services.handlers.base import Handler
 
 
 class Router:

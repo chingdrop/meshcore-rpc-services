@@ -3,7 +3,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from meshcore_app.schemas import Request, Response
+from meshcore_rpc_services.schemas import Request, Response
 
 
 def test_request_parses_locked_contract():

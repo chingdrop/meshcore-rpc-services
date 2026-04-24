@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from meshcore_app.schemas import Request, Response
+from meshcore_rpc_services.schemas import Request, Response
 
 
 # Lifecycle state names. Kept as module-level constants so handlers and tests

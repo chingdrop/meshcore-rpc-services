@@ -14,7 +14,7 @@ from typing import AsyncIterator, Optional
 
 import aiomqtt
 
-from meshcore_app.config import MQTTConfig
+from meshcore_rpc_services.config import MQTTConfig
 
 log = logging.getLogger(__name__)
 
