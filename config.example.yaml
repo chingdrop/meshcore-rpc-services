@@ -1,0 +1,21 @@
+# meshcore-app configuration
+# Environment variables override these (prefix: MESHCORE_APP_).
+
+mqtt:
+  host: "localhost"
+  port: 1883
+  username: null
+  password: null
+  client_id: "meshcore-app"
+  # Topics are locked by the RPC contract; see README.
+  request_topic: "meshcore/rpc/request"
+  response_topic_prefix: "meshcore/rpc/response"
+  gateway_status_topic: "meshcore/gateway/status"
+  gateway_health_topic: "meshcore/gateway/health"
+  qos: 1
+
+service:
+  db_path: "./meshcore_app.sqlite3"
+  default_ttl_s: 30
+  max_ttl_s: 300
+  log_level: "INFO"
