@@ -1,0 +1,34 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: meshcore-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: meshcore-rpc-services
+    depends_on:
+      - mosquitto
+    environment:
+      # Env-var overrides. Anything with nested keys uses "__" as separator.
+      MESHCORE_RPC_SERVICES_MQTT__HOST: mosquitto
+      MESHCORE_RPC_SERVICES_MQTT__PORT: "1883"
+      MESHCORE_RPC_SERVICES_SERVICE__LOG_LEVEL: INFO
+      MESHCORE_RPC_SERVICES_SERVICE__RETENTION__DAYS: "30"
+      MESHCORE_RPC_SERVICES_SERVICE__RETENTION__INTERVAL_S: "3600"
+    volumes:
+      - app-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
+  app-data:
