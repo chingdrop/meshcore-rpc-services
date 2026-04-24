@@ -5,6 +5,7 @@ from __future__ import annotations
 # Validation / routing
 BAD_REQUEST = "bad_request"
 UNKNOWN_TYPE = "unknown_type"
+DUPLICATE = "duplicate"
 
 # Execution
 TIMEOUT = "timeout"

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 import yaml
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from meshcore_rpc_services.mqtt import topics as _topics
 
 
 class MQTTConfig(BaseModel):
@@ -16,23 +18,38 @@ class MQTTConfig(BaseModel):
     username: Optional[str] = None
     password: Optional[str] = None
     client_id: str = "meshcore-rpc-services"
-
-    request_topic: str = "meshcore/rpc/request"
-    response_topic_prefix: str = "meshcore/rpc/response"
-    gateway_status_topic: str = "meshcore/gateway/status"
-    gateway_health_topic: str = "meshcore/gateway/health"
-
     qos: int = 1
 
     def response_topic(self, node_id: str) -> str:
-        return f"{self.response_topic_prefix}/{node_id}"
+        """Kept for backward compatibility. Prefer :func:`topics.rpc_response_topic`."""
+        return _topics.rpc_response_topic(node_id)
+
+
+class TimeoutConfig(BaseModel):
+    """Request TTL policy.
+
+    Used to construct a :class:`meshcore_rpc_services.timeouts.TimeoutPolicy`.
+    """
+
+    default_s: int = 30
+    min_s: int = 1
+    max_s: int = 300
+    # Per-request-type defaults. Useful when e.g. a type always needs
+    # internet fetches and 30s is too short.
+    per_type_default_s: Dict[str, int] = Field(default_factory=dict)
+
+
+class RetentionConfig(BaseModel):
+    days: int = 30
+    # How often the sweeper runs. 1h is fine for a personal mesh.
+    interval_s: float = 3600.0
 
 
 class ServiceConfig(BaseModel):
-    db_path: str = "./meshcore_rpc_services.sqlite3"
-    default_ttl_s: int = 30
-    max_ttl_s: int = 300
+    db_path: str = "./data/meshcore_rpc_services.sqlite3"
     log_level: str = "INFO"
+    timeouts: TimeoutConfig = Field(default_factory=TimeoutConfig)
+    retention: RetentionConfig = Field(default_factory=RetentionConfig)
 
 
 class AppConfig(BaseSettings):
@@ -47,13 +64,11 @@ class AppConfig(BaseSettings):
 
     @classmethod
     def load(cls, path: Optional[str] = None) -> "AppConfig":
-        """Load config from YAML (if given) with env overriding."""
+        """Load config from YAML (if given), with env overriding."""
         data: dict = {}
         if path:
             p = Path(path)
             if p.exists():
                 with p.open() as f:
                     data = yaml.safe_load(f) or {}
-        # Instantiating BaseSettings with explicit kwargs lets env vars still
-        # override via the SettingsConfigDict env_prefix.
         return cls(**data)

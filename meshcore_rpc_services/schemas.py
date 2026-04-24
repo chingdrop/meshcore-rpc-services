@@ -26,11 +26,11 @@ class Request(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     v: int = Field(default=SCHEMA_VERSION)
-    id: str = Field(min_length=1, max_length=64)
-    type: str = Field(min_length=1, max_length=64)
+    id: str = Field(min_length=1, max_length=128)
+    type: str = Field(min_length=1, max_length=128)
     # `from` is a Python keyword, so alias it.
-    from_: str = Field(alias="from", min_length=1, max_length=64)
-    ttl: Optional[int] = Field(default=None, ge=1, le=3600)
+    from_: str = Field(alias="from", min_length=1, max_length=128)
+    ttl: Optional[int] = Field(default=None, ge=1)
     args: Dict[str, Any] = Field(default_factory=dict)
 
 

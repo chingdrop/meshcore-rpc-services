@@ -5,13 +5,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+import time
 from typing import Optional
 
 import click
 
 from meshcore_rpc_services.config import AppConfig
-from meshcore_rpc_services.persistence import Store
-from meshcore_rpc_services.service import Service
+from meshcore_rpc_services.persistence import SqliteRequestRepository, SqliteStore
+from meshcore_rpc_services.retention import RetentionSweeper
+from meshcore_rpc_services.transport import Service
 
 
 def _configure_logging(level: str) -> None:
@@ -32,7 +34,7 @@ def initdb(config_path: Optional[str]) -> None:
     """Create the SQLite schema."""
     cfg = AppConfig.load(config_path)
     _configure_logging(cfg.service.log_level)
-    store = Store(cfg.service.db_path)
+    store = SqliteStore(cfg.service.db_path)
     store.close()
     click.echo(f"Initialized SQLite DB at {cfg.service.db_path}")
 
@@ -52,8 +54,7 @@ def run(config_path: Optional[str]) -> None:
             try:
                 loop.add_signal_handler(sig, stop.set)
             except NotImplementedError:
-                # Windows — shrug.
-                pass
+                pass  # Windows
 
         service_task = asyncio.create_task(service.run())
         stop_task = asyncio.create_task(stop.wait())
@@ -67,8 +68,31 @@ def run(config_path: Optional[str]) -> None:
             except asyncio.CancelledError:
                 pass
         elif service_task in done:
-            # Surface any exception from the service loop.
             service_task.result()
+
+    asyncio.run(_amain())
+
+
+@main.command()
+@click.option("--config", "config_path", type=click.Path(dir_okay=False), default=None)
+@click.option("--days", type=int, default=None, help="Override retention days")
+def purge(config_path: Optional[str], days: Optional[int]) -> None:
+    """Run a one-shot retention sweep and exit."""
+    cfg = AppConfig.load(config_path)
+    _configure_logging(cfg.service.log_level)
+    effective_days = days if days is not None else cfg.service.retention.days
+
+    async def _amain() -> None:
+        store = SqliteStore(cfg.service.db_path)
+        try:
+            repo = SqliteRequestRepository(store)
+            sweeper = RetentionSweeper(
+                repo, days=effective_days, interval_s=3600.0
+            )
+            deleted = await sweeper.run_once()
+            click.echo(f"Purged {deleted} request rows older than {effective_days}d.")
+        finally:
+            store.close()
 
     asyncio.run(_amain())
 
