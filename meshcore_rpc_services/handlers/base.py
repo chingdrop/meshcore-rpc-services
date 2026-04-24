@@ -1,18 +1,22 @@
 """Handler protocol and shared context.
 
-This module intentionally avoids importing transport/persistence modules at
-runtime — handlers should be testable with stub contexts that satisfy the
-structural types below, without pulling aiomqtt or sqlite into test scope.
+Handlers depend on *ports* (see :mod:`meshcore_rpc_services.ports`), never
+on the concrete MQTT bus or SQLite store. That is what lets the same
+handler run under the MQTT service today and under a Celery worker
+tomorrow.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from meshcore_rpc_services.mqtt_bus import MqttBus
-    from meshcore_rpc_services.persistence import AsyncStore
+    from meshcore_rpc_services.ports import (
+        GatewaySnapshotProvider,
+        NodeRegistry,
+        RequestRepository,
+    )
     from meshcore_rpc_services.schemas import Request, Response
 
 
@@ -20,15 +24,19 @@ if TYPE_CHECKING:
 class HandlerContext:
     """Dependencies made available to handlers.
 
-    Handlers should read from this rather than reaching into the service.
-    Keep it narrow — if a handler needs something new, add it here explicitly.
+    Intentionally narrow. If a handler needs something new, add a port and
+    add it here — do not give handlers a bus, a DB connection, or a
+    Celery app.
     """
 
-    bus: "MqttBus"
-    store: "AsyncStore"
+    snapshot: "GatewaySnapshotProvider"
+    repo: "RequestRepository"
+    nodes: "NodeRegistry"
 
 
 class Handler(Protocol):
     type: str  # request type this handler serves
 
-    async def handle(self, request: "Request", ctx: HandlerContext) -> "Response": ...
+    async def handle(
+        self, request: "Request", ctx: HandlerContext
+    ) -> "Response": ...
