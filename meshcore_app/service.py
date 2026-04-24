@@ -39,7 +39,7 @@ class Service:
 
     async def run(self) -> None:
         log.info(
-            "Starting meshcore-app (handlers=%s, default_ttl=%ss, max_ttl=%ss)",
+            "Starting meshcore-rpc-services (handlers=%s, default_ttl=%ss, max_ttl=%ss)",
             self._router.types(),
             self._cfg.service.default_ttl_s,
             self._cfg.service.max_ttl_s,

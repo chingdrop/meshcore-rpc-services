@@ -15,7 +15,7 @@ class MQTTConfig(BaseModel):
     port: int = 1883
     username: Optional[str] = None
     password: Optional[str] = None
-    client_id: str = "meshcore-app"
+    client_id: str = "meshcore-rpc-services"
 
     request_topic: str = "meshcore/rpc/request"
     response_topic_prefix: str = "meshcore/rpc/response"
@@ -29,7 +29,7 @@ class MQTTConfig(BaseModel):
 
 
 class ServiceConfig(BaseModel):
-    db_path: str = "./meshcore_app.sqlite3"
+    db_path: str = "./meshcore_rpc_services.sqlite3"
     default_ttl_s: int = 30
     max_ttl_s: int = 300
     log_level: str = "INFO"
@@ -37,7 +37,7 @@ class ServiceConfig(BaseModel):
 
 class AppConfig(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="MESHCORE_APP_",
+        env_prefix="MESHCORE_RPC_SERVICES_",
         env_nested_delimiter="__",
         extra="ignore",
     )

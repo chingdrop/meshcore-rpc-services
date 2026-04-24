@@ -1,4 +1,4 @@
-# meshcore-app
+# meshcore-rpc-services
 
 Application-layer RPC services for a personal MeshCore + MQTT network.
 
@@ -55,12 +55,12 @@ Error codes: `bad_request`, `unknown_type`, `timeout`, `internal`.
 ```bash
 pip install -e ".[dev]"
 cp config.example.yaml config.yaml  # edit as needed
-python -m meshcore_app initdb --config config.yaml
-python -m meshcore_app run    --config config.yaml
+meshcore-rpc-services initdb --config config.yaml
+meshcore-rpc-services run    --config config.yaml
 ```
 
-Env overrides: every setting is overridable via `MESHCORE_APP_*`, e.g.
-`MESHCORE_APP_MQTT__HOST=broker.lan`.
+Env overrides: every setting is overridable via `MESHCORE_RPC_SERVICES_*`, e.g.
+`MESHCORE_RPC_SERVICES_MQTT__HOST=broker.lan`.
 
 ## Tests
 

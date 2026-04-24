@@ -23,7 +23,7 @@ def _configure_logging(level: str) -> None:
 
 @click.group()
 def main() -> None:
-    """meshcore-app: application-layer RPC services."""
+    """meshcore-rpc-services: application-layer RPC services."""
 
 
 @main.command()

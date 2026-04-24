@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "meshcore-app"
+name = "meshcore-rpc-services"
 version = "0.1.0"
 description = "Application-layer RPC services for a MeshCore + MQTT network."
 requires-python = ">=3.10"
@@ -23,7 +23,7 @@ dev = [
 ]
 
 [project.scripts]
-meshcore-app = "meshcore_app.cli:main"
+meshcore-rpc-services = "meshcore_app.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["meshcore_app*"]
