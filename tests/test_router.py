@@ -6,10 +6,12 @@ from meshcore_rpc_services.router import Router
 
 def test_router_resolves_default_handlers():
     r = Router(DEFAULT_HANDLERS)
-    assert r.resolve("ping") is not None
-    assert r.resolve("gateway.status") is not None
+    for t in ("ping", "echo", "time.now", "gateway.status", "node.last_seen"):
+        assert r.resolve(t) is not None
     assert r.resolve("nope") is None
-    assert r.types() == ["gateway.status", "ping"]
+    assert set(r.types()) == {
+        "ping", "echo", "time.now", "gateway.status", "node.last_seen"
+    }
 
 
 def test_router_rejects_duplicate():
