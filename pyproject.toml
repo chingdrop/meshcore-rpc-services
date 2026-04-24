@@ -9,6 +9,7 @@ description = "Application-layer RPC services for a MeshCore + MQTT network."
 requires-python = ">=3.10"
 dependencies = [
     "aiomqtt>=2.3.0",
+    "paho-mqtt>=2.0.0",
     "pydantic>=2.6",
     "pydantic-settings>=2.2",
     "click>=8.1",
@@ -21,9 +22,15 @@ dev = [
     "pytest-asyncio>=0.23",
     "ruff>=0.4",
 ]
+integration = [
+    "paho-mqtt>=2.0.0",
+]
 
 [project.scripts]
 meshcore-rpc-services = "meshcore_rpc_services.cli:main"
+
+[tool.setuptools.package-data]
+meshcore_rpc_services = ["persistence/schema.sql"]
 
 [tool.setuptools.packages.find]
 include = ["meshcore_rpc_services*"]
@@ -31,3 +38,6 @@ include = ["meshcore_rpc_services*"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: tests that require a running MQTT broker",
+]
