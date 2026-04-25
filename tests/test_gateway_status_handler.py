@@ -8,8 +8,7 @@ from meshcore_rpc_services.schemas import Request, Response
 async def test_gateway_status_returns_compact_body(ctx, store):
     # Seed a couple of completions so the counts aren't all zero.
     from meshcore_rpc_services.lifecycle import (
-        COMPLETED_ERROR, COMPLETED_OK, TIMEOUT,
-    )
+        COMPLETED_OK, )
     fake = Request.model_validate(
         {"v": 1, "id": "x", "type": "ping", "from": "n1"}
     )

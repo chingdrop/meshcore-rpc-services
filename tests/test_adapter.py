@@ -1,10 +1,10 @@
 import json
 
+from meshcore_rpc_services.schemas import Response
 from meshcore_rpc_services.transport.adapter import (
     inbound_to_request,
     response_to_outbound,
 )
-from meshcore_rpc_services.schemas import Response
 
 
 def _bytes(obj) -> bytes:

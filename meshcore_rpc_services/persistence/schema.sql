@@ -12,52 +12,52 @@ CREATE TABLE IF NOT EXISTS requests
 (
     -- Surrogate key; kept TEXT for easy future move to UUIDs or natural keys.
     id
-    TEXT
-    NOT
-    NULL,
+        TEXT
+        NOT
+            NULL,
     node_id
-    TEXT
-    NOT
-    NULL,
+        TEXT
+        NOT
+            NULL,
     type
-    TEXT
-    NOT
-    NULL,
+        TEXT
+        NOT
+            NULL,
     ttl_s
-    INTEGER
-    NOT
-    NULL,
+        INTEGER
+        NOT
+            NULL,
     received_at
-    REAL
-    NOT
-    NULL,
+        REAL
+        NOT
+            NULL,
     completed_at
-    REAL,
+        REAL,
     final_state
-    TEXT, -- 'completed_ok' | 'completed_error'
+        TEXT, -- 'completed_ok' | 'completed_error'
     error_code
-    TEXT, -- set when final_state='completed_error'
+        TEXT, -- set when final_state='completed_error'
     request_json
-    TEXT
-    NOT
-    NULL,
+        TEXT
+        NOT
+            NULL,
     response_json
-    TEXT,
+        TEXT,
     -- The composite (node_id, id) is what makes a request unique across the
     -- whole system. SQLite enforces this with the UNIQUE index below and the
     -- code uses INSERT OR IGNORE to detect dupes cheaply.
     PRIMARY
-    KEY
-(
-    node_id,
-    id
-)
-    );
+        KEY
+        (
+         node_id,
+         id
+            )
+);
 
-CREATE INDEX IF NOT EXISTS idx_req_received ON requests(received_at);
-CREATE INDEX IF NOT EXISTS idx_req_node ON requests(node_id);
-CREATE INDEX IF NOT EXISTS idx_req_final_state ON requests(final_state);
-CREATE INDEX IF NOT EXISTS idx_req_completed ON requests(completed_at);
+CREATE INDEX IF NOT EXISTS idx_req_received ON requests (received_at);
+CREATE INDEX IF NOT EXISTS idx_req_node ON requests (node_id);
+CREATE INDEX IF NOT EXISTS idx_req_final_state ON requests (final_state);
+CREATE INDEX IF NOT EXISTS idx_req_completed ON requests (completed_at);
 
 -- ---------------------------------------------------------------------------
 -- Append-only event log for state transitions. Useful for operational
@@ -66,31 +66,31 @@ CREATE INDEX IF NOT EXISTS idx_req_completed ON requests(completed_at);
 CREATE TABLE IF NOT EXISTS request_events
 (
     id
-    INTEGER
-    PRIMARY
-    KEY
-    AUTOINCREMENT,
+        INTEGER
+        PRIMARY
+            KEY
+        AUTOINCREMENT,
     request_id
-    TEXT
-    NOT
-    NULL, -- matches requests.id; not FK-enforced
+        TEXT
+        NOT
+            NULL, -- matches requests.id; not FK-enforced
     node_id
-    TEXT
-    NOT
-    NULL, -- denormalized for easy joins / retention
+        TEXT
+        NOT
+            NULL, -- denormalized for easy joins / retention
     state
-    TEXT
-    NOT
-    NULL,
+        TEXT
+        NOT
+            NULL,
     detail
-    TEXT,
+        TEXT,
     ts
-    REAL
-    NOT
-    NULL
+        REAL
+        NOT
+            NULL
 );
-CREATE INDEX IF NOT EXISTS idx_events_req ON request_events(request_id);
-CREATE INDEX IF NOT EXISTS idx_events_ts ON request_events(ts);
+CREATE INDEX IF NOT EXISTS idx_events_req ON request_events (request_id);
+CREATE INDEX IF NOT EXISTS idx_events_ts ON request_events (ts);
 
 -- ---------------------------------------------------------------------------
 -- Gateway status/health snapshots. The bus writes every time the retained
@@ -99,20 +99,20 @@ CREATE INDEX IF NOT EXISTS idx_events_ts ON request_events(ts);
 CREATE TABLE IF NOT EXISTS gateway_snapshots
 (
     id
-    INTEGER
-    PRIMARY
-    KEY
-    AUTOINCREMENT,
+        INTEGER
+        PRIMARY
+            KEY
+        AUTOINCREMENT,
     ts
-    REAL
-    NOT
-    NULL,
+        REAL
+        NOT
+            NULL,
     status
-    TEXT,
+        TEXT,
     health
-    TEXT
+        TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_gw_snap_ts ON gateway_snapshots(ts);
+CREATE INDEX IF NOT EXISTS idx_gw_snap_ts ON gateway_snapshots (ts);
 
 -- ---------------------------------------------------------------------------
 -- Lightweight node registry. Populated whenever a valid request is received.
@@ -121,13 +121,13 @@ CREATE INDEX IF NOT EXISTS idx_gw_snap_ts ON gateway_snapshots(ts);
 CREATE TABLE IF NOT EXISTS nodes
 (
     node_id
-    TEXT
-    PRIMARY
-    KEY,
+        TEXT
+        PRIMARY
+            KEY,
     last_seen
-    REAL
-    NOT
-    NULL
+        REAL
+        NOT
+            NULL
 );
 
 -- ---------------------------------------------------------------------------

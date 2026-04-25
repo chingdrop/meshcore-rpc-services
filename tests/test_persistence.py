@@ -1,7 +1,8 @@
 """Persistence tests. Use a real Store in tmp_path (via the fixture)."""
 
-import pytest
 import time
+
+import pytest
 
 from meshcore_rpc_services.schemas import Request, Response
 

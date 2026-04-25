@@ -8,7 +8,6 @@ import pytest
 
 from meshcore_rpc_services import core, lifecycle
 from meshcore_rpc_services.handlers import DEFAULT_HANDLERS
-from meshcore_rpc_services.handlers.base import HandlerContext
 from meshcore_rpc_services.router import Router
 from meshcore_rpc_services.schemas import Request, Response
 from meshcore_rpc_services.timeouts import PendingTracker, TimeoutPolicy
@@ -72,6 +71,7 @@ async def test_unknown_type_is_rejected(store, ctx):
 async def test_timeout_fires_on_slow_handler(store, ctx):
     class _Slow:
         type = "slow"
+
         async def handle(self, req, ctx):
             await asyncio.sleep(5)
             return Response.ok(req, {})
@@ -88,6 +88,7 @@ async def test_timeout_fires_on_slow_handler(store, ctx):
 async def test_handler_exception_becomes_internal_error(store, ctx):
     class _Boom:
         type = "boom"
+
         async def handle(self, req, ctx):
             raise RuntimeError("kaboom")
 
