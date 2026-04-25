@@ -41,7 +41,7 @@ Error codes: `bad_request`, `unknown_type`, `duplicate`, `timeout`, `internal`.
 - **`ping`** — `{message: "pong"}`, optionally echoes `args.echo` (≤64 chars)
 - **`echo`** — `{msg: <truncated args.msg>}` (≤180 chars)
 - **`time.now`** — `{ts: <unix>, iso: "<RFC3339Z>"}`
-- **`gateway.status`** — `{gw, hb, pending, ok, err, to}`. Gateway is the source of truth for gw/hb.
+- **`gateway.status`** — `{gw, hb, snap_age_s, pending, ok, err, to}`. Gateway is the source of truth for gw/hb. `snap_age_s` is null when no retained message has been received since startup, indicating the cache is cold.
 - **`node.last_seen`** — `{node, ts, age_s}` for the requester or another node via `args.node`.
 
 Adding a handler: one new file in `handlers/`, append to `DEFAULT_HANDLERS`, add a test.
@@ -217,6 +217,12 @@ When that happens, the refactor is roughly:
 4. Register the models in admin.
 
 Handlers, `core`, `schemas`, `router`, `lifecycle`, and the adapter don't change. But that's a concrete refactor for when the need is real, not scaffolding built today.
+
+## Known limitations
+
+- **No rate limiting.** A misbehaving node can flood the request queue. The `(node_id, id)` dedup key prevents exact duplicate replays, but a node sending many distinct request IDs will consume memory and disk unbounded. Per-node rate limiting is planned but not yet implemented.
+- **Gateway snapshot is in-memory only.** `gateway.status` and the `snap_age_s` field reflect whatever the service cached since last startup. If the service restarts or the broker drops the retained message, the snapshot goes cold until the next retained publish arrives.
+- **SQLite only.** No migration tooling beyond the built-in `schema_version` mechanism. Adding columns requires an entry in `_MIGRATIONS` in `persistence/sqlite.py` and a rolling deploy (SQLite `ALTER TABLE ADD COLUMN` is safe; other changes need a manual migration).
 
 ## Out of scope
 
