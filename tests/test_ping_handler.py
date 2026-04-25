@@ -11,7 +11,7 @@ async def test_ping_pong(ctx):
     )
     resp = await ping.handle(req, ctx)
     assert resp.status == "ok"
-    assert resp.body == {"message": "pong"}
+    assert resp.body == {"msg": "pong"}
     assert resp.to == "n1"
     assert resp.id == "p1"
 

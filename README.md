@@ -68,62 +68,47 @@ Error codes: `bad_request`, `unknown_type`, `duplicate`, `timeout`, `internal`.
 ### `ping`
 
 ```json
-{
-  "message": "pong"
-}
+{ "msg": "pong" }
 ```
 
-Pass `args.echo` (≤ 64 chars) to get it reflected back in `message`.
+Pass `args.echo` (≤ 64 chars) to get it reflected back alongside `msg`:
+`{ "msg": "pong", "echo": "your text" }`.
 
 ### `echo`
 
 ```json
-{
-  "msg": "<args.msg truncated to 180 chars>"
-}
+{ "msg": "<args.msg truncated to 180 chars>" }
 ```
 
 ### `time.now`
 
 ```json
-{
-  "ts": 1714000000.0,
-  "iso": "2024-04-25T00:00:00Z"
-}
+{ "ts": 1714000000.0, "iso": "2024-04-25T00:00:00Z" }
 ```
 
 ### `gateway.status`
 
 ```json
-{
-  "gw": "connected",
-  // last retained meshcore/gateway/status value, or "unknown"
-  "hb": "ok",
-  // last retained meshcore/gateway/health value, or "unknown"
-  "snap_age_s": 42,
-  // seconds since the cache was last updated; null if never received
-  "pending": 1,
-  // requests with no final_state yet
-  "ok": 18,
-  // completed_ok count (all time)
-  "err": 2,
-  // completed_error count (all time)
-  "to": 0
-  // timeout count (all time)
-}
+{ "gw": "connected", "hb": "ok", "snap_age_s": 42, "pending": 1, "ok": 18, "err": 2, "to": 0 }
 ```
 
-`snap_age_s` is `null` when no retained message has arrived since startup —
-the gateway cache is cold and `gw`/`hb` should be treated as stale.
+| Field        | Type       | Description                                                            |
+|--------------|------------|------------------------------------------------------------------------|
+| `gw`         | string     | Last retained `meshcore/gateway/status` value, or `"unknown"`          |
+| `hb`         | string     | Last retained `meshcore/gateway/health` value, or `"unknown"`          |
+| `snap_age_s` | int / null | Seconds since cache was last updated; `null` if no message received yet |
+| `pending`    | int        | Requests with no `final_state` yet                                     |
+| `ok`         | int        | `completed_ok` count (all time)                                        |
+| `err`        | int        | `completed_error` count (all time)                                     |
+| `to`         | int        | Timeout count (all time)                                               |
+
+When `snap_age_s` is `null` the gateway cache is cold — `gw` and `hb` should
+be treated as unknown regardless of their string values.
 
 ### `node.last_seen`
 
 ```json
-{
-  "node": "node-abc",
-  "ts": 1714000000.0,
-  "age_s": 120
-}
+{ "node": "node-abc", "ts": 1714000000.0, "age_s": 120 }
 ```
 
 `ts` and `age_s` are `null` if the node has never been seen. Defaults to the

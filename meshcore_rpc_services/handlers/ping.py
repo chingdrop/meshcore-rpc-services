@@ -3,7 +3,7 @@
 Contract:
     request.type == "ping"
     request.args may contain an optional "echo" string (bounded length).
-    Response body: {"message": "pong", "echo": <echo?>} — terse on purpose.
+    Response body: {"msg": "pong", "echo": <echo?>} — terse on purpose.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ class PingHandler:
     type = "ping"
 
     async def handle(self, request: Request, ctx: HandlerContext) -> Response:
-        body: dict = {"message": "pong"}
+        body: dict = {"msg": "pong"}
         echo = request.args.get("echo")
         if isinstance(echo, str) and echo:
             body["echo"] = echo[:_MAX_ECHO_LEN]

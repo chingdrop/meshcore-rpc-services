@@ -47,7 +47,7 @@ async def test_ping_happy_path(store, ctx):
     assert len(sent) == 1
     _, resp = sent[0]
     assert resp.status == "ok"
-    assert resp.body == {"message": "pong"}
+    assert resp.body == {"msg": "pong"}
 
     # Final state is completed_ok
     counts = await store.counts()

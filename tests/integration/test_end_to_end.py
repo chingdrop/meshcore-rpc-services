@@ -108,7 +108,7 @@ async def test_ping_roundtrip(service_task, broker_host, broker_port):
         )
         resp = await collector.wait_for(req_id)
         assert resp["status"] == "ok"
-        assert resp["body"] == {"message": "pong"}
+        assert resp["body"] == {"msg": "pong"}
     finally:
         await collector.stop()
 
