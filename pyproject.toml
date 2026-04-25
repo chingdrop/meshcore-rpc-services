@@ -4,8 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meshcore-rpc-services"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Application-layer RPC services for a MeshCore + MQTT network."
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "aiomqtt>=2.3.0",
@@ -20,7 +21,6 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
-    "ruff>=0.4",
 ]
 integration = [
     "paho-mqtt>=2.0.0",
@@ -32,8 +32,12 @@ meshcore-rpc-services = "meshcore_rpc_services.cli:main"
 [tool.setuptools.package-data]
 meshcore_rpc_services = ["persistence/schema.sql"]
 
+[tool.setuptools.dynamic]
+version = { attr = "meshcore_rpc_services.__version__" }
+
 [tool.setuptools.packages.find]
 include = ["meshcore_rpc_services*"]
+exclude = ["tests*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
