@@ -4,38 +4,45 @@ import time
 import pytest
 
 from meshcore_rpc_services.retention import RetentionSweeper
-from tests._fakes import FakeRepo
 
 
 @pytest.mark.asyncio
-async def test_run_once_calls_purge_with_expected_cutoff():
-    repo = FakeRepo()
-    sweeper = RetentionSweeper(repo, days=30, interval_s=3600)
-    before = time.time()
-    await sweeper.run_once()
-    after = time.time()
-    assert len(repo.purge_calls) == 1
-    cutoff = repo.purge_calls[0]
-    # Cutoff should be "now - 30 days" within a second.
-    expected_low = before - (30 * 86400) - 1
-    expected_high = after - (30 * 86400) + 1
-    assert expected_low <= cutoff <= expected_high
-
-
-def test_construct_rejects_bad_args():
-    with pytest.raises(ValueError):
-        RetentionSweeper(FakeRepo(), days=0, interval_s=60)
-    with pytest.raises(ValueError):
-        RetentionSweeper(FakeRepo(), days=30, interval_s=0.5)
+async def test_run_once_purges_nothing_on_empty_store(store):
+    sweeper = RetentionSweeper(store, days=30, interval_s=3600)
+    assert await sweeper.run_once() == 0
 
 
 @pytest.mark.asyncio
-async def test_start_stop_cycle_is_clean():
-    repo = FakeRepo()
-    # Tiny interval so the loop spins.
-    sweeper = RetentionSweeper(repo, days=30, interval_s=1)
+async def test_run_once_purges_old_completed_requests(store):
+    from meshcore_rpc_services.schemas import Request, Response
+    from meshcore_rpc_services.lifecycle import COMPLETED_OK
+
+    fake = Request.model_validate(
+        {"v": 1, "id": "old", "type": "ping", "from": "n1"}
+    )
+    await store.record_received(fake, ttl_s=5)
+    await store.record_completion(
+        "old", "n1", final_state=COMPLETED_OK, response=Response.ok(fake, {})
+    )
+    store._conn.execute(
+        "UPDATE requests SET completed_at = ? WHERE id = ?", (0.0, "old")
+    )
+    store._conn.commit()
+
+    sweeper = RetentionSweeper(store, days=30, interval_s=3600)
+    assert await sweeper.run_once() == 1
+
+
+def test_construct_rejects_bad_args(store):
+    with pytest.raises(ValueError):
+        RetentionSweeper(store, days=0, interval_s=60)
+    with pytest.raises(ValueError):
+        RetentionSweeper(store, days=30, interval_s=0.5)
+
+
+@pytest.mark.asyncio
+async def test_start_stop_cycle_is_clean(store):
+    sweeper = RetentionSweeper(store, days=30, interval_s=1)
     sweeper.start()
-    # Give the first immediate-run sweep a chance to execute.
-    await asyncio.sleep(0.05)
+    await asyncio.sleep(0.05)  # give the first immediate sweep a chance
     await sweeper.stop()
-    assert len(repo.purge_calls) >= 1

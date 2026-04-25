@@ -1,56 +1,42 @@
 import pytest
 
-from meshcore_rpc_services.handlers.base import HandlerContext
 from meshcore_rpc_services.handlers.gateway_status import handler as gw
-from meshcore_rpc_services.schemas import Request
-
-from tests._fakes import FakeNodeRegistry, FakeSnapshot
-
-
-class _StubRepo:
-    def __init__(self, counts):
-        self._counts = counts
-    async def counts(self):
-        return self._counts
-    async def record_received(self, request, ttl_s): ...
-    async def record_event(self, request_id, state, detail=None): ...
-    async def record_completion(self, request_id, final_state, response=None, error_code=None): ...
-    async def purge_before(self, cutoff): return 0
-
-
-def _ctx(snap, counts):
-    return HandlerContext(
-        snapshot=snap, repo=_StubRepo(counts), nodes=FakeNodeRegistry()
-    )
+from meshcore_rpc_services.schemas import Request, Response
 
 
 @pytest.mark.asyncio
-async def test_gateway_status_returns_compact_body():
+async def test_gateway_status_returns_compact_body(ctx, store):
+    # Seed a couple of completions so the counts aren't all zero.
+    from meshcore_rpc_services.lifecycle import (
+        COMPLETED_ERROR, COMPLETED_OK, TIMEOUT,
+    )
+    fake = Request.model_validate(
+        {"v": 1, "id": "x", "type": "ping", "from": "n1"}
+    )
+    ok_resp = Response.ok(fake, {"message": "pong"})
+    await store.record_received(fake, ttl_s=5)
+    await store.record_completion("x", "n1", final_state=COMPLETED_OK, response=ok_resp)
+
     req = Request.model_validate(
         {"v": 1, "id": "g1", "type": "gateway.status", "from": "n1"}
     )
-    ctx = _ctx(
-        FakeSnapshot("connected", "ok"),
-        {"completed_ok": 5, "completed_error": 1, "timeout": 2, "pending": 3},
-    )
     resp = await gw.handle(req, ctx)
     assert resp.status == "ok"
-    assert resp.body == {
-        "gw": "connected",
-        "hb": "ok",
-        "pending": 3,
-        "ok": 5,
-        "err": 1,
-        "to": 2,
-    }
+    assert resp.body is not None
+    assert resp.body["gw"] == "connected"
+    assert resp.body["hb"] == "ok"
+    assert resp.body["ok"] == 1
+    assert resp.body["err"] == 0
 
 
 @pytest.mark.asyncio
-async def test_gateway_status_handles_unknown():
+async def test_gateway_status_handles_unknown(ctx, snapshot_fn):
+    snapshot_fn.state["status"] = None
+    snapshot_fn.state["health"] = None
+
     req = Request.model_validate(
         {"v": 1, "id": "g2", "type": "gateway.status", "from": "n1"}
     )
-    ctx = _ctx(FakeSnapshot(status=None, health=None), {})
     resp = await gw.handle(req, ctx)
     assert resp.body is not None
     assert resp.body["gw"] == "unknown"

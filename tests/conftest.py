@@ -1,5 +1,37 @@
 import os
 import sys
 
+import pytest
+
 # Make the package importable when running `pytest` from the repo root.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+
+@pytest.fixture
+def store(tmp_path):
+    """A fresh Store backed by a throwaway SQLite file."""
+    from meshcore_rpc_services.persistence import Store
+    s = Store(str(tmp_path / "test.sqlite3"))
+    try:
+        yield s
+    finally:
+        s.close()
+
+
+@pytest.fixture
+def snapshot_fn():
+    """A callable returning a mutable gateway-snapshot dict."""
+    state = {"status": "connected", "health": "ok"}
+
+    async def _get():
+        return dict(state)
+
+    # Expose mutation hook on the function for tests that need to tweak.
+    _get.state = state  # type: ignore[attr-defined]
+    return _get
+
+
+@pytest.fixture
+def ctx(store, snapshot_fn):
+    from meshcore_rpc_services.handlers.base import HandlerContext
+    return HandlerContext(store=store, gateway_snapshot=snapshot_fn)
