@@ -1,13 +1,10 @@
-"""Persistence package.
+"""SQLite persistence.
 
 Public surface:
 
-* :class:`SqliteRequestRepository` — the concrete backend shipped in v1.
-* Lifecycle state constants, re-exported from
-  :mod:`meshcore_rpc_services.lifecycle`.
-
-A future ``DjangoRequestRepository`` will live here as a sibling of
-:mod:`sqlite` and will implement the same port.
+* :class:`Store` — the async persistence API used by core + handlers.
+* Lifecycle state constants (re-exported from
+  :mod:`meshcore_rpc_services.lifecycle`).
 """
 
 from __future__ import annotations
@@ -22,17 +19,10 @@ from meshcore_rpc_services.lifecycle import (
     TIMEOUT,
     VALIDATED,
 )
-from meshcore_rpc_services.persistence.sqlite import (
-    SqliteRequestRepository,
-    SqliteStore,
-)
-
-# Legacy alias for callers that used "error" as the generic final-error value.
-ERROR = COMPLETED_ERROR
+from meshcore_rpc_services.persistence.sqlite import Store
 
 __all__ = [
-    "SqliteRequestRepository",
-    "SqliteStore",
+    "Store",
     "RECEIVED",
     "VALIDATED",
     "REJECTED",
@@ -41,5 +31,4 @@ __all__ = [
     "TIMEOUT",
     "COMPLETED_OK",
     "COMPLETED_ERROR",
-    "ERROR",
 ]

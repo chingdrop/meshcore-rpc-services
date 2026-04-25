@@ -4,8 +4,8 @@ Application-layer RPC services for a personal MeshCore + MQTT network.
 
 The gateway (a separate component, `meshcore-mqtt`) bridges MeshCore ↔ MQTT.
 This repo subscribes to RPC requests on MQTT, validates them, routes to
-handlers, tracks lifecycle, enforces timeouts, persists everything, and
-publishes structured responses. It never talks to LoRa hardware.
+handlers, tracks lifecycle in SQLite, enforces timeouts, and publishes
+structured responses. It never talks to LoRa hardware.
 
 ## MQTT contract (v1)
 
@@ -16,7 +16,7 @@ publishes structured responses. It never talks to LoRa hardware.
 | in        | `meshcore/gateway/status` (retained)   | Cached in memory + persisted                |
 | in        | `meshcore/gateway/health` (retained)   | Cached in memory + persisted                |
 
-All topic strings live in `meshcore_rpc_services/mqtt/topics.py`. Do not
+All topic strings live in `meshcore_rpc_services/mqtt/topics.py`. Don't
 hardcode them elsewhere.
 
 ## Request / Response schemas
@@ -41,14 +41,14 @@ Error codes: `bad_request`, `unknown_type`, `duplicate`, `timeout`, `internal`.
 - **`ping`** — `{message: "pong"}`, optionally echoes `args.echo` (≤64 chars)
 - **`echo`** — `{msg: <truncated args.msg>}` (≤180 chars)
 - **`time.now`** — `{ts: <unix>, iso: "<RFC3339Z>"}`
-- **`gateway.status`** — `{gw, hb, pending, ok, err, to}`. Gateway is the source of truth.
-- **`node.last_seen`** — `{node, ts, age_s}` for the requester's last-seen time, or another node via `args.node`.
+- **`gateway.status`** — `{gw, hb, pending, ok, err, to}`. Gateway is the source of truth for gw/hb.
+- **`node.last_seen`** — `{node, ts, age_s}` for the requester or another node via `args.node`.
 
-Adding a handler is three lines in `handlers/__init__.py` + one new file + a test. Handlers depend only on ports, never on MQTT or SQLite directly.
+Adding a handler: one new file in `handlers/`, append to `DEFAULT_HANDLERS`, add a test.
 
-## Lifecycle states
+## Lifecycle
 
-A request transitions through these explicit states (logged to `request_events`):
+Requests move through these states, logged to the `request_events` table:
 
 ```
 received → validated → handler_started → response_published → completed_ok
@@ -57,32 +57,47 @@ received → validated → handler_started → response_published → completed_
 ```
 
 `rejected` covers `bad_request`, `unknown_type`, and `duplicate`. Terminal
-states on the `requests.final_state` column are `completed_ok` and
-`completed_error`. See `meshcore_rpc_services/lifecycle.py`.
+values on `requests.final_state` are `completed_ok` and `completed_error`.
+See `meshcore_rpc_services/lifecycle.py`.
 
 ## Architecture
 
+Flat and concrete. There are no Protocol types, no dependency-injection
+ports, no "seams for later framework X." If a second persistence backend
+or a second transport is ever needed, add a class with the same public
+methods; that's the interface.
+
 ```
-transport/ ──> core, ports, persistence/*, handlers/*, router, schemas
-               adapter translates MQTT ↔ internal Request/Response
-handlers/  ──> ports, schemas            (no transport, no SQLite)
-core       ──> ports, router, timeouts, schemas, lifecycle
+transport/        MQTT wrapper, adapter (bytes ↔ Request/Response), service loop
+core.py           the pipeline: parse -> validate -> route -> run -> persist -> emit
+handlers/         business logic, one file per type
+persistence/      Store class (async-facing, sqlite3 under a threadpool)
+timeouts/         TimeoutPolicy + PendingTracker
+lifecycle.py      canonical state strings
+mqtt/topics.py    single source of truth for topic strings
+retention.py      periodic cleanup task
 ```
 
-Three layer rules:
+The service wires these together:
 
-- **Transport-only modules**: `transport/bus.py`, `transport/service.py`, `transport/adapter.py`, `mqtt/topics.py`, scripts.
-- **Core is pure**: takes ports, does the lifecycle, returns nothing. No MQTT imports, no SQLite imports.
-- **Handlers are pure**: take a `Request` + `HandlerContext` of ports, return a `Response`.
+```
+MqttBus  ──subscribes──>  meshcore/rpc/request
+   │                      meshcore/gateway/{status,health}  (retained → cached + persisted)
+   │
+   ▼
+Service._handle_one(msg.payload)
+   │
+   ├─ transport.adapter.inbound_to_request → Request (or structured error)
+   │
+   ▼
+core.process_request(request, store, router, ctx, emit, tracker, policy)
+   │
+   └─ store methods + emit(node_id, response) via bus.publish
+```
 
 ### Transport adapter
 
-`transport/adapter.py` is the **only** place the app-layer translates between wire-level MQTT messages and internal `Request`/`Response` objects. Today the translation is near-identity because the gateway's own `rpc_adapter` already publishes clean JSON on the internal RPC topics. The seam matters for the future: if the gateway ever stops running its adapter, or the wire envelope changes, you change `transport/adapter.py` and nothing else in this repo.
-
-### Migration-friendliness
-
-- **Django later** — swap `SqliteRequestRepository` for a Django-backed implementation of the same `RequestRepository`/`NodeRegistry`/`GatewaySnapshotSink` ports. One line changes in `transport/service.py`. Handlers, core, router, schemas untouched.
-- **Celery later** — wrap `core.process_request` in a Celery task; change the consume loop from `asyncio.create_task` to `send_task`. The ports stay the same; a Celery-aware `ResponseEmitter` writes to a "to_publish" table that a small publisher drains.
+`transport/adapter.py` is where we translate between wire MQTT and internal `Request`/`Response`. Today the translation is essentially just JSON parse + pydantic validate, but the seam matters: the gateway's own RPC adapter may drift, and this is the one place we'd change to follow it.
 
 ## Install and run (local Python)
 
@@ -93,64 +108,35 @@ meshcore-rpc-services initdb --config config.yaml
 meshcore-rpc-services run    --config config.yaml
 ```
 
-Env overrides: anything with nested keys uses `__`, e.g.
+Env overrides use `__` between levels:
 `MESHCORE_RPC_SERVICES_MQTT__HOST=broker.lan`,
 `MESHCORE_RPC_SERVICES_SERVICE__TIMEOUTS__DEFAULT_S=60`.
 
 ## Docker test bench
 
-Spin up a broker and the service together:
-
 ```bash
 docker compose up --build
 ```
 
-This launches:
+Launches:
 
 - **`mosquitto`** — local MQTT broker on `1883` (anonymous, dev-only).
-- **`app`** — the service, auto-connecting to `mosquitto:1883`, persisting
-  SQLite to a named volume, retention=30d.
+- **`app`** — the service, connecting to `mosquitto:1883`, persisting SQLite
+  to a named volume, 30-day retention.
 
-Send a test request from your host:
+Send test requests:
 
 ```bash
 python scripts/send_request.py --type ping --from mynode
-python scripts/send_request.py --type echo --from mynode --args '{"msg": "hi"}'
+python scripts/send_request.py --type echo --from mynode --args '{"msg":"hi"}'
 python scripts/send_request.py --type time.now --from mynode
 ```
 
-Seed retained gateway status so `gateway.status` returns something interesting:
+Seed retained gateway status so `gateway.status` returns something:
 
 ```bash
 python scripts/seed_gateway_status.py --status connected --health ok
 python scripts/send_request.py --type gateway.status --from mynode
-```
-
-Watch the service log for the startup summary:
-
-```
-============================================================
-meshcore-rpc-services starting
-  broker         : mosquitto:1883
-  client_id      : meshcore-rpc-services
-  qos            : 1
-  db             : /app/data/meshcore_rpc_services.sqlite3
-  log_level      : INFO
-  ttl policy     : default=30s min=1s max=300s
-  retention      : 30d (sweep every 3600s)
-  handlers (5)   :
-     - echo
-     - gateway.status
-     - node.last_seen
-     - ping
-     - time.now
-  subscribe:
-     - meshcore/rpc/request
-     - meshcore/gateway/status
-     - meshcore/gateway/health
-  publish:
-     - meshcore/rpc/response/<node_id>
-============================================================
 ```
 
 ## Tests
@@ -159,29 +145,24 @@ meshcore-rpc-services starting
 # Unit tests (no broker required)
 pytest -m "not integration"
 
-# Integration tests (requires a broker)
+# Integration tests (broker required)
 docker compose up -d mosquitto
 pytest -m integration
-# or: MESHCORE_RPC_SERVICES_TEST_MQTT_HOST=broker.lan pytest -m integration
 ```
 
-Integration tests automatically skip with a clear reason if no broker is reachable. They cover:
-
-- Request → process → response round trip (`ping`)
-- Retained `gateway/status` + `gateway/health` ingestion visible via `gateway.status`
-- Duplicate `(from, id)` produces a `duplicate` error response
-- Unknown type produces an `unknown_type` error response
+Unit tests use a real SQLite `Store` backed by `tmp_path`. No mocks, no
+port stubs — the interface is the class, so tests exercise the real class.
 
 ## Retention
 
 30-day default, configurable. The sweeper runs once at startup and then on
-`retention.interval_s` (default 1 hour). `purge_before(cutoff)` deletes
-request rows whose `completed_at < cutoff`, their event log entries, and old
-gateway-snapshot rows. Run a one-shot purge:
+`retention.interval_s` (default 1 hour). `Store.purge_before(cutoff)`
+deletes request rows whose `completed_at < cutoff`, their events, and
+old gateway-snapshot rows. Run a one-shot purge:
 
 ```bash
 meshcore-rpc-services purge --config config.yaml
-meshcore-rpc-services purge --config config.yaml --days 7   # ad-hoc
+meshcore-rpc-services purge --config config.yaml --days 7
 ```
 
 ## Layout
@@ -192,35 +173,30 @@ meshcore_rpc_services/
   schemas.py          # Request / Response
   errors.py           # error codes + RpcError
   lifecycle.py        # canonical state strings
-  ports.py            # protocols (repo, emitter, snapshot, node registry)
-  core.py             # pure request pipeline
+  core.py             # the pipeline
   router.py           # type → handler
-  retention.py        # periodic cleanup task
+  retention.py        # periodic cleanup
   cli.py              # run / initdb / purge
-  mqtt/
-    topics.py         # single source of truth for topic strings
+  mqtt/topics.py      # topic string constants
   timeouts/
-    policy.py         # TimeoutPolicy (defaults, per-type, clamp)
-    tracker.py        # PendingTracker (run_with_timeout)
+    policy.py         # TimeoutPolicy
+    tracker.py        # PendingTracker
   persistence/
     schema.sql        # requests, request_events, gateway_snapshots, nodes
-    sqlite.py         # SqliteStore + SqliteRequestRepository
+    sqlite.py         # Store (single class, async surface)
   transport/
-    bus.py            # aiomqtt wrapper + snapshot write-through
-    adapter.py        # MQTT ↔ Request/Response translation
-    service.py        # orchestrator: consume loop, retention, summary
+    bus.py            # aiomqtt wrapper
+    adapter.py        # MQTT ↔ Request/Response
+    service.py        # orchestrator
   handlers/
-    base.py           # Handler protocol + HandlerContext (ports only)
-    ping.py
-    echo.py
-    time_now.py
-    gateway_status.py
-    node_last_seen.py
+    base.py           # Handler protocol + HandlerContext (concrete Store)
+    ping.py / echo.py / time_now.py
+    gateway_status.py / node_last_seen.py
 scripts/
   send_request.py        # publish a request, print the response
   seed_gateway_status.py # publish retained gateway state
 tests/
-  _fakes.py              # shared in-memory port stubs
+  conftest.py            # store + ctx fixtures
   test_*.py              # unit tests (no broker)
   integration/
     test_end_to_end.py   # broker-backed, skipped if no broker
@@ -231,8 +207,19 @@ config.example.yaml
 .env.example
 ```
 
-## Deliberately out of scope
+## If Django ever shows up
 
-No HTTP API, no UI, no hiking/weather, no Django yet, no Celery yet, no
-direct serial access. If it isn't an RPC handler over MQTT, it doesn't
-belong here.
+When that happens, the refactor is roughly:
+
+1. Create Django models matching `persistence/schema.sql`.
+2. Replace `Store` with a Django-backed class with the same method signatures.
+3. Turn `meshcore-rpc-services run` into a `manage.py` command.
+4. Register the models in admin.
+
+Handlers, `core`, `schemas`, `router`, `lifecycle`, and the adapter don't change. But that's a concrete refactor for when the need is real, not scaffolding built today.
+
+## Out of scope
+
+No HTTP API, no UI, no hiking/weather, no Django, no Celery, no direct
+serial access. If it isn't an RPC handler over MQTT, it doesn't belong
+here.

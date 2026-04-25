@@ -5,13 +5,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
-import time
 from typing import Optional
 
 import click
 
 from meshcore_rpc_services.config import AppConfig
-from meshcore_rpc_services.persistence import SqliteRequestRepository, SqliteStore
+from meshcore_rpc_services.persistence import Store
 from meshcore_rpc_services.retention import RetentionSweeper
 from meshcore_rpc_services.transport import Service
 
@@ -34,7 +33,7 @@ def initdb(config_path: Optional[str]) -> None:
     """Create the SQLite schema."""
     cfg = AppConfig.load(config_path)
     _configure_logging(cfg.service.log_level)
-    store = SqliteStore(cfg.service.db_path)
+    store = Store(cfg.service.db_path)
     store.close()
     click.echo(f"Initialized SQLite DB at {cfg.service.db_path}")
 
@@ -83,11 +82,10 @@ def purge(config_path: Optional[str], days: Optional[int]) -> None:
     effective_days = days if days is not None else cfg.service.retention.days
 
     async def _amain() -> None:
-        store = SqliteStore(cfg.service.db_path)
+        store = Store(cfg.service.db_path)
         try:
-            repo = SqliteRequestRepository(store)
             sweeper = RetentionSweeper(
-                repo, days=effective_days, interval_s=3600.0
+                store, days=effective_days, interval_s=3600.0
             )
             deleted = await sweeper.run_once()
             click.echo(f"Purged {deleted} request rows older than {effective_days}d.")

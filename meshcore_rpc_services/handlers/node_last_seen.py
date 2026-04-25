@@ -9,9 +9,6 @@ Contract:
 
 Response body:
     {"node": "<id>", "ts": <unix> | null, "age_s": <int> | null}
-
-``age_s`` is included as a convenience so a caller can render "last seen
-12m ago" without doing the math locally.
 """
 
 from __future__ import annotations
@@ -30,7 +27,7 @@ class NodeLastSeenHandler:
         if not isinstance(target, str) or not target:
             target = request.from_
 
-        ts = await ctx.nodes.get_last_seen(target)
+        ts = await ctx.store.get_last_seen(target)
         if ts is None:
             body = {"node": target, "ts": None, "age_s": None}
         else:

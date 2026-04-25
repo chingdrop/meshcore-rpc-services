@@ -1,9 +1,8 @@
 """Thin async MQTT wrapper around aiomqtt.
 
-Knows nothing about RPC semantics. Connects, subscribes, publishes, and
-async-iterates messages. Also maintains an in-memory cache of the last
-retained gateway status + health messages, and optionally writes each
-snapshot through to a :class:`GatewaySnapshotSink` for history.
+Connects, subscribes, publishes, async-iterates messages. Maintains an
+in-memory cache of the last retained gateway status + health messages, and
+writes each snapshot to the :class:`Store` for history.
 """
 
 from __future__ import annotations
@@ -11,35 +10,25 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Mapping, Optional
+from typing import Any, AsyncIterator, Optional
 
 import aiomqtt
 
 from meshcore_rpc_services.config import MQTTConfig
 from meshcore_rpc_services.mqtt import topics
-from meshcore_rpc_services.ports import GatewaySnapshotSink
+from meshcore_rpc_services.persistence import Store
 
 log = logging.getLogger(__name__)
 
 
 class MqttBus:
-    """Wraps aiomqtt.Client and exposes a simple publish/subscribe surface.
+    """Wraps aiomqtt.Client and exposes a simple publish/subscribe surface."""
 
-    If a ``snapshot_sink`` is provided, each received gateway status/health
-    message is persisted there in addition to being cached in memory.
-    """
-
-    def __init__(
-        self,
-        cfg: MQTTConfig,
-        *,
-        snapshot_sink: Optional[GatewaySnapshotSink] = None,
-    ) -> None:
+    def __init__(self, cfg: MQTTConfig, *, store: Optional[Store] = None) -> None:
         self._cfg = cfg
         self._client: Optional[aiomqtt.Client] = None
-        self._sink = snapshot_sink
+        self._store = store  # None in tests that don't care about history
 
-        # In-memory cache of retained gateway state.
         self._gateway_status: Optional[str] = None
         self._gateway_health: Optional[str] = None
         self._lock = asyncio.Lock()
@@ -55,17 +44,13 @@ class MqttBus:
         )
         async with client:
             self._client = client
-            # Subscribe on the internal RPC contract, not the gateway-native
-            # topics. The gateway's RPC adapter bridges the two.
             await client.subscribe(topics.GATEWAY_STATUS, qos=self._cfg.qos)
             await client.subscribe(topics.GATEWAY_HEALTH, qos=self._cfg.qos)
             await client.subscribe(topics.RPC_REQUEST, qos=self._cfg.qos)
             log.info(
                 "MQTT connected: %s:%s (client_id=%s, qos=%s)",
-                self._cfg.host,
-                self._cfg.port,
-                self._cfg.client_id,
-                self._cfg.qos,
+                self._cfg.host, self._cfg.port,
+                self._cfg.client_id, self._cfg.qos,
             )
             try:
                 yield self
@@ -103,15 +88,15 @@ class MqttBus:
                 self._gateway_health = payload
             status_now, health_now = self._gateway_status, self._gateway_health
 
-        if self._sink is not None:
+        if self._store is not None:
             try:
-                await self._sink.record_snapshot(
+                await self._store.record_gateway_snapshot(
                     status=status_now, health=health_now
                 )
             except Exception:
                 log.exception("Failed to persist gateway snapshot")
 
-    async def get_gateway_snapshot(self) -> Mapping[str, Any]:
+    async def get_gateway_snapshot(self) -> dict[str, Any]:
         async with self._lock:
             return {
                 "status": self._gateway_status,

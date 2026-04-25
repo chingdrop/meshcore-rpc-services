@@ -1,9 +1,7 @@
 """`gateway.status` handler.
 
-Reports last-known gateway status + health (via
-:class:`GatewaySnapshotProvider`) plus a compact summary of request counts
-from the repository. Both are ports — this handler works unchanged whether
-the substrate is MQTT + SQLite (today) or Celery + Django ORM (later).
+Reports last-known gateway status + health (from the bus-cached snapshot)
+plus a compact summary of request counts from the store.
 
 Response body is kept terse for LoRa.
 """
@@ -19,14 +17,12 @@ class GatewayStatusHandler:
     type = "gateway.status"
 
     async def handle(self, request: Request, ctx: HandlerContext) -> Response:
-        snap = await ctx.snapshot.get_snapshot()
-        counts = await ctx.repo.counts()
+        snap = await ctx.gateway_snapshot()
+        counts = await ctx.store.counts()
 
         body = {
-            # Gateway self-reported:
             "gw": snap.get("status") or "unknown",
             "hb": snap.get("health") or "unknown",
-            # App-layer view:
             "pending": counts.get("pending", 0),
             "ok": counts.get(COMPLETED_OK, 0),
             "err": counts.get(COMPLETED_ERROR, 0),

@@ -1,18 +1,20 @@
-"""SQLite implementation of the persistence ports.
+"""SQLite persistence for the application layer.
 
-Sync ``sqlite3`` under a threadpool via ``asyncio.to_thread``. One connection,
-serialised writes. That's plenty for a personal mesh; and when it isn't, the
-port split means we can swap in a Django-backed implementation without
-touching ``core`` or the handlers.
+One class, :class:`Store`, with async methods that delegate to a sync
+sqlite3 connection via ``asyncio.to_thread``. This avoids an ``aiosqlite``
+dependency while keeping the event loop free.
 
-This module implements three ports:
+The class covers the full persistence surface:
 
-* :class:`RequestRepository`
-* :class:`GatewaySnapshotSink`
-* :class:`NodeRegistry`
+* request lifecycle writes (received, events, completion)
+* read-side counts for the gateway.status handler
+* gateway status/health snapshot history
+* node registry (last-seen times)
+* retention cleanup
 
-The first wraps a :class:`SqliteStore` (sync); the other two live directly
-on the same store for simplicity.
+If a second backend is ever needed, copy this class's public method
+signatures into the new backend. That's the interface — no separate
+Protocol needed.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ import asyncio
 import sqlite3
 import time
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import Optional
 
 from meshcore_rpc_services.lifecycle import RECEIVED
 from meshcore_rpc_services.schemas import Request, Response
@@ -29,10 +31,8 @@ from meshcore_rpc_services.schemas import Request, Response
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 
-class SqliteStore:
-    """Sync SQLite wrapper. One connection, executed on a worker thread
-    by the async facades below.
-    """
+class Store:
+    """SQLite-backed persistence. Call the async methods from the pipeline."""
 
     def __init__(self, db_path: str) -> None:
         self._path = db_path
@@ -48,16 +48,81 @@ class SqliteStore:
     def close(self) -> None:
         self._conn.close()
 
-    # -----------------------------------------------------------------
-    # Request lifecycle writes
-    # -----------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Request lifecycle
+    # ------------------------------------------------------------------
 
-    def record_received(self, request: Request, ttl_s: int) -> bool:
+    async def record_received(self, request: Request, ttl_s: int) -> bool:
         """Insert the request if new. Return True on fresh, False on duplicate.
 
-        Duplicate detection uses ``INSERT OR IGNORE`` keyed on
-        ``(node_id, id)``.
+        Duplicate detection uses ``INSERT OR IGNORE`` keyed on ``(node_id, id)``.
         """
+        return await asyncio.to_thread(
+            self._sync_record_received, request, ttl_s
+        )
+
+    async def record_event(
+        self,
+        request_id: str,
+        node_id: str,
+        state: str,
+        detail: Optional[str] = None,
+    ) -> None:
+        await asyncio.to_thread(
+            self._sync_record_event, request_id, node_id, state, detail
+        )
+
+    async def record_completion(
+        self,
+        request_id: str,
+        node_id: str,
+        final_state: str,
+        response: Optional[Response] = None,
+        error_code: Optional[str] = None,
+    ) -> None:
+        await asyncio.to_thread(
+            self._sync_record_completion,
+            request_id, node_id, final_state, response, error_code,
+        )
+
+    async def counts(self) -> dict[str, int]:
+        by_state = await asyncio.to_thread(self._sync_count_by_final_state)
+        pending = await asyncio.to_thread(self._sync_count_pending)
+        return {**by_state, "pending": pending}
+
+    # ------------------------------------------------------------------
+    # Node registry
+    # ------------------------------------------------------------------
+
+    async def mark_node_seen(self, node_id: str, ts: float) -> None:
+        await asyncio.to_thread(self._sync_mark_node_seen, node_id, ts)
+
+    async def get_last_seen(self, node_id: str) -> Optional[float]:
+        return await asyncio.to_thread(self._sync_get_last_seen, node_id)
+
+    # ------------------------------------------------------------------
+    # Gateway snapshots
+    # ------------------------------------------------------------------
+
+    async def record_gateway_snapshot(
+        self, *, status: Optional[str], health: Optional[str]
+    ) -> None:
+        await asyncio.to_thread(
+            self._sync_record_gateway_snapshot, status, health
+        )
+
+    # ------------------------------------------------------------------
+    # Retention
+    # ------------------------------------------------------------------
+
+    async def purge_before(self, cutoff_ts: float) -> int:
+        return await asyncio.to_thread(self._sync_purge_before, cutoff_ts)
+
+    # ------------------------------------------------------------------
+    # Sync implementations. Called from the threadpool.
+    # ------------------------------------------------------------------
+
+    def _sync_record_received(self, request: Request, ttl_s: int) -> bool:
         now = time.time()
         with self._conn:
             cur = self._conn.execute(
@@ -73,21 +138,21 @@ class SqliteStore:
                     request.model_dump_json(by_alias=True),
                 ),
             )
-            fresh = cur.rowcount == 1
-            if fresh:
-                self._conn.execute(
-                    "INSERT INTO request_events "
-                    "(request_id, node_id, state, ts) VALUES (?, ?, ?, ?)",
-                    (request.id, request.from_, RECEIVED, now),
-                )
-            return fresh
+            if cur.rowcount != 1:
+                return False
+            self._conn.execute(
+                "INSERT INTO request_events "
+                "(request_id, node_id, state, ts) VALUES (?, ?, ?, ?)",
+                (request.id, request.from_, RECEIVED, now),
+            )
+            return True
 
-    def record_event(
+    def _sync_record_event(
         self,
         request_id: str,
         node_id: str,
         state: str,
-        detail: Optional[str] = None,
+        detail: Optional[str],
     ) -> None:
         with self._conn:
             self._conn.execute(
@@ -97,13 +162,13 @@ class SqliteStore:
                 (request_id, node_id, state, detail, time.time()),
             )
 
-    def record_completion(
+    def _sync_record_completion(
         self,
         request_id: str,
         node_id: str,
         final_state: str,
-        response: Optional[Response] = None,
-        error_code: Optional[str] = None,
+        response: Optional[Response],
+        error_code: Optional[str],
     ) -> None:
         now = time.time()
         response_json = response.to_json() if response else None
@@ -117,11 +182,7 @@ class SqliteStore:
                  request_id, node_id),
             )
 
-    # -----------------------------------------------------------------
-    # Node registry
-    # -----------------------------------------------------------------
-
-    def mark_node_seen(self, node_id: str, ts: float) -> None:
+    def _sync_mark_node_seen(self, node_id: str, ts: float) -> None:
         with self._conn:
             self._conn.execute(
                 "INSERT INTO nodes (node_id, last_seen) VALUES (?, ?) "
@@ -130,18 +191,14 @@ class SqliteStore:
                 (node_id, ts),
             )
 
-    def get_last_seen(self, node_id: str) -> Optional[float]:
+    def _sync_get_last_seen(self, node_id: str) -> Optional[float]:
         cur = self._conn.execute(
             "SELECT last_seen FROM nodes WHERE node_id = ?", (node_id,)
         )
         row = cur.fetchone()
         return float(row[0]) if row else None
 
-    # -----------------------------------------------------------------
-    # Gateway snapshots
-    # -----------------------------------------------------------------
-
-    def record_gateway_snapshot(
+    def _sync_record_gateway_snapshot(
         self, status: Optional[str], health: Optional[str]
     ) -> None:
         with self._conn:
@@ -151,14 +208,20 @@ class SqliteStore:
                 (time.time(), status, health),
             )
 
-    # -----------------------------------------------------------------
-    # Retention / reads
-    # -----------------------------------------------------------------
+    def _sync_count_by_final_state(self) -> dict[str, int]:
+        cur = self._conn.execute(
+            "SELECT final_state, COUNT(*) FROM requests "
+            "WHERE final_state IS NOT NULL GROUP BY final_state"
+        )
+        return {row[0]: row[1] for row in cur.fetchall()}
 
-    def purge_before(self, cutoff_ts: float) -> int:
-        """Delete request rows completed before ``cutoff_ts`` (plus their
-        events), and old snapshot rows. Returns request rows deleted.
-        """
+    def _sync_count_pending(self) -> int:
+        cur = self._conn.execute(
+            "SELECT COUNT(*) FROM requests WHERE final_state IS NULL"
+        )
+        return int(cur.fetchone()[0])
+
+    def _sync_purge_before(self, cutoff_ts: float) -> int:
         with self._conn:
             cur = self._conn.execute(
                 "DELETE FROM requests "
@@ -176,103 +239,3 @@ class SqliteStore:
                 (cutoff_ts,),
             )
         return deleted
-
-    def count_by_final_state(self) -> dict[str, int]:
-        cur = self._conn.execute(
-            "SELECT final_state, COUNT(*) FROM requests "
-            "WHERE final_state IS NOT NULL GROUP BY final_state"
-        )
-        return {row[0]: row[1] for row in cur.fetchall()}
-
-    def count_pending(self) -> int:
-        cur = self._conn.execute(
-            "SELECT COUNT(*) FROM requests WHERE final_state IS NULL"
-        )
-        return int(cur.fetchone()[0])
-
-
-# ---------------------------------------------------------------------------
-# Async facades implementing the ports
-# ---------------------------------------------------------------------------
-
-
-class SqliteRequestRepository:
-    """Implements :class:`ports.RequestRepository`,
-    :class:`ports.GatewaySnapshotSink`, and :class:`ports.NodeRegistry`.
-
-    The three ports collapse onto the same store for simplicity; a future
-    Django backend might split them across multiple models, which is fine —
-    the ports already define the boundary.
-    """
-
-    def __init__(self, store: SqliteStore) -> None:
-        self._store = store
-
-    # RequestRepository
-    async def record_received(self, request: Request, ttl_s: int) -> bool:
-        return await asyncio.to_thread(
-            self._store.record_received, request, ttl_s
-        )
-
-    async def record_event(
-        self, request_id: str, state: str, detail: Optional[str] = None
-    ) -> None:
-        # We don't have node_id here; store it alongside for retention.
-        # The core pipeline passes it via keyword form that includes node_id
-        # when available. For simpler callers we pass empty string.
-        await asyncio.to_thread(
-            self._store.record_event, request_id, "", state, detail
-        )
-
-    async def record_event_for_node(
-        self,
-        request_id: str,
-        node_id: str,
-        state: str,
-        detail: Optional[str] = None,
-    ) -> None:
-        await asyncio.to_thread(
-            self._store.record_event, request_id, node_id, state, detail
-        )
-
-    async def record_completion(
-        self,
-        request_id: str,
-        final_state: str,
-        response: Optional[Response] = None,
-        error_code: Optional[str] = None,
-    ) -> None:
-        # node_id is recoverable from the response.to; falls back to empty
-        # string if response is None (shouldn't happen in practice).
-        node_id = response.to if response else ""
-        await asyncio.to_thread(
-            self._store.record_completion,
-            request_id, node_id, final_state, response, error_code,
-        )
-
-    async def counts(self) -> Mapping[str, int]:
-        by_state = await asyncio.to_thread(self._store.count_by_final_state)
-        pending = await asyncio.to_thread(self._store.count_pending)
-        return {**by_state, "pending": pending}
-
-    async def purge_before(self, cutoff_ts: float) -> int:
-        return await asyncio.to_thread(self._store.purge_before, cutoff_ts)
-
-    # GatewaySnapshotSink
-    async def record_snapshot(
-        self, *, status: Optional[str], health: Optional[str]
-    ) -> None:
-        await asyncio.to_thread(
-            self._store.record_gateway_snapshot, status, health
-        )
-
-    # NodeRegistry
-    async def mark_seen(self, node_id: str, ts: float) -> None:
-        await asyncio.to_thread(self._store.mark_node_seen, node_id, ts)
-
-    async def get_last_seen(self, node_id: str) -> Optional[float]:
-        return await asyncio.to_thread(self._store.get_last_seen, node_id)
-
-    # Housekeeping
-    def close(self) -> None:
-        self._store.close()
