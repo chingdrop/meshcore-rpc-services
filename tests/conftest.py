@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 
@@ -5,6 +6,12 @@ import pytest
 
 # Make the package importable when running `pytest` from the repo root.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+# paho-mqtt (used by aiomqtt) requires add_reader/add_writer, which only
+# SelectorEventLoop supports. ProactorEventLoop is the Windows default in
+# Python 3.8+ and does not implement those methods.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 @pytest.fixture
