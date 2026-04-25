@@ -53,7 +53,7 @@ def test_response_ok_shape():
 
 
 def test_response_error_shape():
-    resp = Response.error(
+    resp = Response.make_error(
         request_id="a", request_type="ping", to="n", code="timeout", message="gone"
     )
     j = json.loads(resp.to_json())

@@ -143,7 +143,7 @@ async def _emit_error_final(
         store: Store,
         emit: ResponseEmitter,
 ) -> None:
-    resp = Response.error(
+    resp = Response.make_error(
         request_id=request.id,
         request_type=request.type,
         to=request.from_,

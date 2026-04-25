@@ -123,7 +123,7 @@ def _try_build_bad_request_response(
         )
         return None
 
-    return Response.error(
+    return Response.make_error(
         request_id=str(req_id),
         request_type=str(req_type or "unknown"),
         to=str(to),

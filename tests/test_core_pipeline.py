@@ -16,6 +16,8 @@ from meshcore_rpc_services.timeouts import PendingTracker, TimeoutPolicy
 
 def _req(**over):
     base = {"v": 1, "id": "r1", "type": "ping", "from": "n1"}
+    if "from_" in over:
+        base["from"] = over.pop("from_")
     base.update(over)
     return Request.model_validate(base)
 

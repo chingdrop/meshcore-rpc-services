@@ -68,7 +68,7 @@ class Response(BaseModel):
         )
 
     @classmethod
-    def error(
+    def make_error(
             cls,
             *,
             request_id: str,
