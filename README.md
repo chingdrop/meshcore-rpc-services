@@ -9,12 +9,12 @@ structured responses. It never talks to LoRa hardware.
 
 ## MQTT contract (v1)
 
-| Direction | Topic                                  | Notes                                       |
-| --------- | -------------------------------------- | ------------------------------------------- |
-| in        | `meshcore/rpc/request`                 | RPC requests                                |
-| out       | `meshcore/rpc/response/<node_id>`      | One topic per node                          |
-| in        | `meshcore/gateway/status` (retained)   | Cached in memory + persisted                |
-| in        | `meshcore/gateway/health` (retained)   | Cached in memory + persisted                |
+| Direction | Topic                                | Notes                        |
+|-----------|--------------------------------------|------------------------------|
+| in        | `meshcore/rpc/request`               | RPC requests                 |
+| out       | `meshcore/rpc/response/<node_id>`    | One topic per node           |
+| in        | `meshcore/gateway/status` (retained) | Cached in memory + persisted |
+| in        | `meshcore/gateway/health` (retained) | Cached in memory + persisted |
 
 All topic strings live in `meshcore_rpc_services/mqtt/topics.py`. Don't
 hardcode them elsewhere.
@@ -23,32 +23,148 @@ hardcode them elsewhere.
 
 ```json
 // Request
-{ "v": 1, "id": "abc123", "type": "ping", "from": "node-xyz", "ttl": 30, "args": {} }
+{
+  "v": 1,
+  "id": "abc123",
+  "type": "ping",
+  "from": "node-xyz",
+  "ttl": 30,
+  "args": {}
+}
 
 // Success
-{ "v": 1, "id": "abc123", "type": "ping", "to": "node-xyz",
-  "status": "ok", "body": {"message": "pong"} }
+{
+  "v": 1,
+  "id": "abc123",
+  "type": "ping",
+  "to": "node-xyz",
+  "status": "ok",
+  "body": {
+    ...
+  }
+}
 
 // Error
-{ "v": 1, "id": "abc123", "type": "ping", "to": "node-xyz",
-  "status": "error", "error": {"code": "timeout", "message": "..."} }
+{
+  "v": 1,
+  "id": "abc123",
+  "type": "ping",
+  "to": "node-xyz",
+  "status": "error",
+  "error": {
+    "code": "timeout",
+    "message": "..."
+  }
+}
 ```
 
 Error codes: `bad_request`, `unknown_type`, `duplicate`, `timeout`, `internal`.
 
+`ttl` and `args` are optional in requests. `ttl` defaults to the policy
+`default_s`; `args` defaults to `{}`.
+
 ## v1 handlers
 
-- **`ping`** — `{message: "pong"}`, optionally echoes `args.echo` (≤64 chars)
-- **`echo`** — `{msg: <truncated args.msg>}` (≤180 chars)
-- **`time.now`** — `{ts: <unix>, iso: "<RFC3339Z>"}`
-- **`gateway.status`** — `{gw, hb, snap_age_s, pending, ok, err, to}`. Gateway is the source of truth for gw/hb. `snap_age_s` is null when no retained message has been received since startup, indicating the cache is cold.
-- **`node.last_seen`** — `{node, ts, age_s}` for the requester or another node via `args.node`.
+### `ping`
 
-Adding a handler: one new file in `handlers/`, append to `DEFAULT_HANDLERS`, add a test.
+```json
+{
+  "message": "pong"
+}
+```
+
+Pass `args.echo` (≤ 64 chars) to get it reflected back in `message`.
+
+### `echo`
+
+```json
+{
+  "msg": "<args.msg truncated to 180 chars>"
+}
+```
+
+### `time.now`
+
+```json
+{
+  "ts": 1714000000.0,
+  "iso": "2024-04-25T00:00:00Z"
+}
+```
+
+### `gateway.status`
+
+```json
+{
+  "gw": "connected",
+  // last retained meshcore/gateway/status value, or "unknown"
+  "hb": "ok",
+  // last retained meshcore/gateway/health value, or "unknown"
+  "snap_age_s": 42,
+  // seconds since the cache was last updated; null if never received
+  "pending": 1,
+  // requests with no final_state yet
+  "ok": 18,
+  // completed_ok count (all time)
+  "err": 2,
+  // completed_error count (all time)
+  "to": 0
+  // timeout count (all time)
+}
+```
+
+`snap_age_s` is `null` when no retained message has arrived since startup —
+the gateway cache is cold and `gw`/`hb` should be treated as stale.
+
+### `node.last_seen`
+
+```json
+{
+  "node": "node-abc",
+  "ts": 1714000000.0,
+  "age_s": 120
+}
+```
+
+`ts` and `age_s` are `null` if the node has never been seen. Defaults to the
+requester's own node id; pass `args.node` to query another node.
+
+## Adding a handler
+
+1. Create `handlers/my_type.py`:
+
+```python
+from meshcore_rpc_services.handlers.base import Handler, HandlerContext
+from meshcore_rpc_services.schemas import Request, Response
+
+
+class MyTypeHandler:
+    type = "my.type"
+
+    async def handle(self, request: Request, ctx: HandlerContext) -> Response:
+        return Response.ok(request, {"result": "..."})
+
+
+handler: Handler = MyTypeHandler()
+```
+
+2. Register it in `handlers/__init__.py`:
+
+```python
+from meshcore_rpc_services.handlers import my_type
+
+DEFAULT_HANDLERS = [..., my_type.handler]
+```
+
+3. Add `tests/test_my_type_handler.py`. Use the `ctx` fixture from `conftest.py` —
+   no mocks, no broker required.
+
+Raise `meshcore_rpc_services.errors.RpcError(code, message)` from `handle()`
+to return a structured error response. Unhandled exceptions become `internal` errors.
 
 ## Lifecycle
 
-Requests move through these states, logged to the `request_events` table:
+Requests move through these states, appended to the `request_events` table:
 
 ```
 received → validated → handler_started → response_published → completed_ok
@@ -97,20 +213,32 @@ core.process_request(request, store, router, ctx, emit, tracker, policy)
 
 ### Transport adapter
 
-`transport/adapter.py` is where we translate between wire MQTT and internal `Request`/`Response`. Today the translation is essentially just JSON parse + pydantic validate, but the seam matters: the gateway's own RPC adapter may drift, and this is the one place we'd change to follow it.
+`transport/adapter.py` translates between wire MQTT and internal
+`Request`/`Response` (JSON parse + pydantic validate). The gateway's own RPC
+adapter may drift; this is the one place to follow it.
 
-## Install and run (local Python)
+## Install and run
 
 ```bash
+# With uv (recommended)
+uv sync --extra dev
+
+# With pip
 pip install -e ".[dev]"
+```
+
+```bash
 cp config.example.yaml config.yaml
 meshcore-rpc-services initdb --config config.yaml
 meshcore-rpc-services run    --config config.yaml
 ```
 
 Env overrides use `__` between levels:
-`MESHCORE_RPC_SERVICES_MQTT__HOST=broker.lan`,
-`MESHCORE_RPC_SERVICES_SERVICE__TIMEOUTS__DEFAULT_S=60`.
+
+```
+MESHCORE_RPC_SERVICES_MQTT__HOST=broker.lan
+MESHCORE_RPC_SERVICES_SERVICE__TIMEOUTS__DEFAULT_S=60
+```
 
 ## Docker test bench
 
@@ -153,17 +281,47 @@ pytest -m integration
 Unit tests use a real SQLite `Store` backed by `tmp_path`. No mocks, no
 port stubs — the interface is the class, so tests exercise the real class.
 
+## Logging
+
+Log lines include a `[request_id node_id rpc_type]` context block:
+
+```
+2026-04-25 10:00:00,123 INFO meshcore_rpc_services.core [abc123 node-xyz ping] Handler crashed
+2026-04-25 10:00:00,124 INFO meshcore_rpc_services.transport.service [- - -] meshcore-rpc-services starting
+```
+
+Fields default to `-` outside request context. Configure `service.log_level`
+in `config.yaml` or via `MESHCORE_RPC_SERVICES_SERVICE__LOG_LEVEL=DEBUG`.
+
 ## Retention
 
 30-day default, configurable. The sweeper runs once at startup and then on
 `retention.interval_s` (default 1 hour). `Store.purge_before(cutoff)`
 deletes request rows whose `completed_at < cutoff`, their events, and
-old gateway-snapshot rows. Run a one-shot purge:
+old gateway-snapshot rows.
 
 ```bash
 meshcore-rpc-services purge --config config.yaml
 meshcore-rpc-services purge --config config.yaml --days 7
 ```
+
+## Schema migrations
+
+The database version is tracked in the `schema_version` table. New databases
+are stamped as version 1 on first open. To add a schema change:
+
+1. Add an entry to `_MIGRATIONS` in `persistence/sqlite.py`:
+
+```python
+_MIGRATIONS: list[tuple[int, str]] = [
+    (2, "ALTER TABLE requests ADD COLUMN priority INTEGER NOT NULL DEFAULT 0;"),
+]
+```
+
+2. Bump the version number (`2`, `3`, …). Never edit or remove existing entries.
+
+`Store.__init__` applies pending migrations on every open, so a deploy is
+enough — no manual `ALTER TABLE` needed.
 
 ## Layout
 
@@ -182,14 +340,14 @@ meshcore_rpc_services/
     policy.py         # TimeoutPolicy
     tracker.py        # PendingTracker
   persistence/
-    schema.sql        # requests, request_events, gateway_snapshots, nodes
+    schema.sql        # requests, request_events, gateway_snapshots, nodes, schema_version
     sqlite.py         # Store (single class, async surface)
   transport/
-    bus.py            # aiomqtt wrapper
+    bus.py            # aiomqtt wrapper + gateway snapshot cache
     adapter.py        # MQTT ↔ Request/Response
     service.py        # orchestrator
   handlers/
-    base.py           # Handler protocol + HandlerContext (concrete Store)
+    base.py           # Handler protocol + HandlerContext
     ping.py / echo.py / time_now.py
     gateway_status.py / node_last_seen.py
 scripts/
@@ -205,30 +363,23 @@ docker-compose.yml
 docker/mosquitto.conf
 config.example.yaml
 .env.example
+CHANGELOG.md
 ```
-
-## If Django ever shows up
-
-When that happens, the refactor is roughly:
-
-1. Create Django models matching `persistence/schema.sql`.
-2. Replace `Store` with a Django-backed class with the same method signatures.
-3. Turn `meshcore-rpc-services run` into a `manage.py` command.
-4. Register the models in admin.
-
-Handlers, `core`, `schemas`, `router`, `lifecycle`, and the adapter don't change. But that's a concrete refactor for when the need is real, not scaffolding built today.
 
 ## Known limitations
 
-- **No rate limiting.** A misbehaving node can flood the request queue. The `(node_id, id)` dedup key prevents exact duplicate replays, but a node sending many distinct request IDs will consume memory and disk unbounded. Per-node rate limiting is planned but not yet implemented.
-- **Gateway snapshot is in-memory only.** `gateway.status` and the `snap_age_s` field reflect whatever the service cached since last startup. If the service restarts or the broker drops the retained message, the snapshot goes cold until the next retained publish arrives.
-- **SQLite only.** No migration tooling beyond the built-in `schema_version` mechanism. Adding columns requires an entry in `_MIGRATIONS` in `persistence/sqlite.py` and a rolling deploy (SQLite `ALTER TABLE ADD COLUMN` is safe; other changes need a manual migration).
-
-## Out of scope
-
-No HTTP API, no UI, no hiking/weather, no Django, no Celery, no direct
-serial access. If it isn't an RPC handler over MQTT, it doesn't belong
-here.
+- **No rate limiting.** A misbehaving node can flood the request queue. The
+  `(node_id, id)` dedup key prevents exact duplicate replays, but a node
+  sending many distinct request IDs will consume memory and disk unbounded.
+- **Gateway snapshot is in-memory only.** `gateway.status` reflects what the
+  service cached since last startup. After a restart the cache is cold until
+  the next retained publish arrives; `snap_age_s` will be `null`.
+- **SQLite only.** Adding columns requires an entry in `_MIGRATIONS` (see
+  above). Other schema changes (rename, drop) need a manual migration.
+- **Windows asyncio.** The production CLI uses `SelectorEventLoop` directly
+  to work around a paho-mqtt incompatibility with `ProactorEventLoop` (the
+  Windows default). The test harness uses `WindowsSelectorEventLoopPolicy`,
+  which is deprecated in Python 3.16 — track upstream paho-mqtt for a fix.
 
 ## License
 
