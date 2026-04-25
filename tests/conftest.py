@@ -10,6 +10,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 # paho-mqtt (used by aiomqtt) requires add_reader/add_writer, which only
 # SelectorEventLoop supports. ProactorEventLoop is the Windows default in
 # Python 3.8+ and does not implement those methods.
+# NOTE: WindowsSelectorEventLoopPolicy is deprecated in Python 3.16. When
+# pytest-asyncio gains a loop_factory fixture that works on Windows, switch to
+# that. For now this is the least-invasive way to make all async tests work.
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 

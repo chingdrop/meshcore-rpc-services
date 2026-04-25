@@ -6,7 +6,8 @@ import asyncio
 import logging
 import signal
 import sqlite3
-from typing import Optional
+import sys
+from typing import Any, Coroutine, Optional
 
 import click
 import yaml
@@ -72,6 +73,23 @@ def _open_store(db_path: str) -> Store:
     raise SystemExit(1)
 
 
+def _run_async(coro: "Coroutine[Any, Any, None]") -> None:
+    """Run a coroutine, using SelectorEventLoop on Windows.
+
+    ProactorEventLoop (the Windows default since Python 3.8) does not implement
+    add_reader/add_writer, which paho-mqtt requires. SelectorEventLoop does.
+    Creating it explicitly avoids the deprecated WindowsSelectorEventLoopPolicy.
+    """
+    if sys.platform == "win32":
+        loop = asyncio.SelectorEventLoop()
+        try:
+            loop.run_until_complete(coro)
+        finally:
+            loop.close()
+    else:
+        asyncio.run(coro)
+
+
 @click.group()
 def main() -> None:
     """meshcore-rpc-services: application-layer RPC services."""
@@ -119,7 +137,7 @@ def run(config_path: Optional[str]) -> None:
         elif service_task in done:
             service_task.result()
 
-    asyncio.run(_amain())
+    _run_async(_amain())
 
 
 @main.command()
@@ -142,7 +160,7 @@ def purge(config_path: Optional[str], days: Optional[int]) -> None:
         finally:
             store.close()
 
-    asyncio.run(_amain())
+    _run_async(_amain())
 
 
 if __name__ == "__main__":
