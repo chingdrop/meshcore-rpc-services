@@ -50,7 +50,7 @@ class InboundEnvelope:
 
 
 def inbound_to_request(
-    *, topic: str, raw_payload: bytes | bytearray | memoryview | str
+        *, topic: str, raw_payload: bytes | bytearray | memoryview | str
 ) -> InboundEnvelope:
     """Translate an inbound MQTT message into an :class:`InboundEnvelope`.
 
@@ -106,7 +106,7 @@ def _decode(payload: bytes | bytearray | memoryview | str) -> str:
 
 
 def _try_build_bad_request_response(
-    data: object, err: ValidationError
+        data: object, err: ValidationError
 ) -> Optional[Response]:
     """Emit a ``bad_request`` if we can find an addressable sender, else None."""
     if not isinstance(data, dict):

@@ -62,23 +62,23 @@ class Store:
         )
 
     async def record_event(
-        self,
-        request_id: str,
-        node_id: str,
-        state: str,
-        detail: Optional[str] = None,
+            self,
+            request_id: str,
+            node_id: str,
+            state: str,
+            detail: Optional[str] = None,
     ) -> None:
         await asyncio.to_thread(
             self._sync_record_event, request_id, node_id, state, detail
         )
 
     async def record_completion(
-        self,
-        request_id: str,
-        node_id: str,
-        final_state: str,
-        response: Optional[Response] = None,
-        error_code: Optional[str] = None,
+            self,
+            request_id: str,
+            node_id: str,
+            final_state: str,
+            response: Optional[Response] = None,
+            error_code: Optional[str] = None,
     ) -> None:
         await asyncio.to_thread(
             self._sync_record_completion,
@@ -105,7 +105,7 @@ class Store:
     # ------------------------------------------------------------------
 
     async def record_gateway_snapshot(
-        self, *, status: Optional[str], health: Optional[str]
+            self, *, status: Optional[str], health: Optional[str]
     ) -> None:
         await asyncio.to_thread(
             self._sync_record_gateway_snapshot, status, health
@@ -148,11 +148,11 @@ class Store:
             return True
 
     def _sync_record_event(
-        self,
-        request_id: str,
-        node_id: str,
-        state: str,
-        detail: Optional[str],
+            self,
+            request_id: str,
+            node_id: str,
+            state: str,
+            detail: Optional[str],
     ) -> None:
         with self._conn:
             self._conn.execute(
@@ -163,12 +163,12 @@ class Store:
             )
 
     def _sync_record_completion(
-        self,
-        request_id: str,
-        node_id: str,
-        final_state: str,
-        response: Optional[Response],
-        error_code: Optional[str],
+            self,
+            request_id: str,
+            node_id: str,
+            final_state: str,
+            response: Optional[Response],
+            error_code: Optional[str],
     ) -> None:
         now = time.time()
         response_json = response.to_json() if response else None
@@ -199,7 +199,7 @@ class Store:
         return float(row[0]) if row else None
 
     def _sync_record_gateway_snapshot(
-        self, status: Optional[str], health: Optional[str]
+            self, status: Optional[str], health: Optional[str]
     ) -> None:
         with self._conn:
             self._conn.execute(

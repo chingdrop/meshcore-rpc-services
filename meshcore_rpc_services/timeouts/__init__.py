@@ -7,9 +7,8 @@
 from __future__ import annotations
 
 from meshcore_rpc_services.timeouts.policy import TimeoutPolicy
-from meshcore_rpc_services.timeouts.tracker import PendingTracker
-
 # Backward-compatible shim for older callers.
 from meshcore_rpc_services.timeouts.policy import clamp_ttl
+from meshcore_rpc_services.timeouts.tracker import PendingTracker
 
 __all__ = ["TimeoutPolicy", "PendingTracker", "clamp_ttl"]

@@ -32,14 +32,14 @@ ResponseEmitter = Callable[[str, Response], Awaitable[None]]
 
 
 async def process_request(
-    request: Request,
-    *,
-    router: Router,
-    store: Store,
-    ctx: HandlerContext,
-    emit: ResponseEmitter,
-    tracker: PendingTracker,
-    policy: TimeoutPolicy,
+        request: Request,
+        *,
+        router: Router,
+        store: Store,
+        ctx: HandlerContext,
+        emit: ResponseEmitter,
+        tracker: PendingTracker,
+        policy: TimeoutPolicy,
 ) -> None:
     """Run the full RPC lifecycle for a validated request. Never raises."""
     ttl = policy.resolve(
@@ -136,12 +136,12 @@ async def process_request(
 
 
 async def _emit_error_final(
-    request: Request,
-    *,
-    code: str,
-    message: str,
-    store: Store,
-    emit: ResponseEmitter,
+        request: Request,
+        *,
+        code: str,
+        message: str,
+        store: Store,
+        emit: ResponseEmitter,
 ) -> None:
     resp = Response.error(
         request_id=request.id,
@@ -158,13 +158,13 @@ async def _emit_error_final(
 
 
 async def _publish_and_finalize(
-    request: Request,
-    response: Response,
-    *,
-    store: Store,
-    emit: ResponseEmitter,
-    final_state: str,
-    error_code: Optional[str] = None,
+        request: Request,
+        response: Response,
+        *,
+        store: Store,
+        emit: ResponseEmitter,
+        final_state: str,
+        error_code: Optional[str] = None,
 ) -> None:
     try:
         await emit(request.from_, response)

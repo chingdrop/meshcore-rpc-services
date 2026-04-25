@@ -34,5 +34,5 @@ class Handler(Protocol):
     type: str
 
     async def handle(
-        self, request: Request, ctx: HandlerContext
+            self, request: Request, ctx: HandlerContext
     ) -> Response: ...

@@ -58,7 +58,7 @@ class MqttBus:
                 self._client = None
 
     async def publish(
-        self, topic: str, payload: str | bytes, retain: bool = False
+            self, topic: str, payload: str | bytes, retain: bool = False
     ) -> None:
         if self._client is None:
             raise RuntimeError("MqttBus not connected")

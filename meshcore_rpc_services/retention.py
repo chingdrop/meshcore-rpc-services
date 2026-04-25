@@ -23,11 +23,11 @@ _SECONDS_PER_DAY = 86_400.0
 
 class RetentionSweeper:
     def __init__(
-        self,
-        store: Store,
-        *,
-        days: int,
-        interval_s: float,
+            self,
+            store: Store,
+            *,
+            days: int,
+            interval_s: float,
     ) -> None:
         if days < 1:
             raise ValueError("retention days must be >= 1")

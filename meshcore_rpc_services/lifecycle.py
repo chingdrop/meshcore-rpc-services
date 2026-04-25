@@ -36,7 +36,6 @@ TIMEOUT = "timeout"
 COMPLETED_OK = "completed_ok"
 COMPLETED_ERROR = "completed_error"
 
-
 # All event-log states. Useful for validation in tests and for building
 # admin UI filter dropdowns later.
 ALL_EVENT_STATES = frozenset(
@@ -52,7 +51,6 @@ ALL_EVENT_STATES = frozenset(
 
 # All terminal final_state values.
 ALL_FINAL_STATES = frozenset({COMPLETED_OK, COMPLETED_ERROR})
-
 
 __all__ = [
     "RECEIVED",
