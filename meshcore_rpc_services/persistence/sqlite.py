@@ -30,6 +30,11 @@ from meshcore_rpc_services.schemas import Request, Response
 
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
+# Each entry is (target_version, sql). Applied in order when the stored
+# schema version is below target_version. Add new entries here as the schema
+# evolves; never edit or remove existing ones.
+_MIGRATIONS: list[tuple[int, str]] = []
+
 
 class Store:
     """SQLite-backed persistence. Call the async methods from the pipeline."""
@@ -43,10 +48,31 @@ class Store:
         self._conn.execute("PRAGMA foreign_keys=ON;")
         with _SCHEMA_PATH.open() as f:
             self._conn.executescript(f.read())
+        self._apply_migrations()
         self._conn.commit()
 
     def close(self) -> None:
         self._conn.close()
+
+    def _apply_migrations(self) -> None:
+        cur = self._conn.execute(
+            "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1"
+        )
+        row = cur.fetchone()
+        current = row[0] if row else 0
+        if current == 0:
+            # New DB or first open after versioning was introduced: stamp as v1.
+            with self._conn:
+                self._conn.execute("INSERT INTO schema_version (version) VALUES (1)")
+            current = 1
+        for version, sql in _MIGRATIONS:
+            if version > current:
+                self._conn.executescript(sql)
+                with self._conn:
+                    self._conn.execute(
+                        "INSERT INTO schema_version (version) VALUES (?)", (version,)
+                    )
+                current = version
 
     # ------------------------------------------------------------------
     # Request lifecycle

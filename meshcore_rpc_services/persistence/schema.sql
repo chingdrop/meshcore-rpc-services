@@ -129,3 +129,13 @@ CREATE TABLE IF NOT EXISTS nodes
     NOT
     NULL
 );
+
+-- ---------------------------------------------------------------------------
+-- Schema version tracking. One row per applied version.
+-- A missing row means the DB predates versioning; Store treats that as v0
+-- and stamps it as v1 on first open.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS schema_version
+(
+    version INTEGER NOT NULL
+);
