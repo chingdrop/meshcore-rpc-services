@@ -223,3 +223,11 @@ Handlers, `core`, `schemas`, `router`, `lifecycle`, and the adapter don't change
 No HTTP API, no UI, no hiking/weather, no Django, no Celery, no direct
 serial access. If it isn't an RPC handler over MQTT, it doesn't belong
 here.
+
+## License
+
+This project is licensed under `GPL-3.0-only`. See [`LICENSE`](LICENSE).
+
+If you redistribute binaries, containers, or other non-source forms of this
+project, GPL-3.0 requires that you also make the corresponding source
+available under the same license terms.
