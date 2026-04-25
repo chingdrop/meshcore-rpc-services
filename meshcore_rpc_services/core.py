@@ -47,10 +47,12 @@ async def process_request(
     )
 
     # 1) record_received — decides dedup outcome
+    _ctx = {"request_id": request.id, "node_id": request.from_, "rpc_type": request.type}
+
     try:
         fresh = await store.record_received(request, ttl)
     except Exception:
-        log.exception("record_received failed; emitting internal error")
+        log.exception("record_received failed; emitting internal error", extra=_ctx)
         await _emit_error_final(
             request, code=errors.INTERNAL,
             message="persistence error", store=store, emit=emit,
@@ -112,10 +114,7 @@ async def process_request(
         )
         return
     except Exception as e:  # noqa: BLE001
-        log.exception(
-            "Handler crashed for request id=%s type=%s",
-            request.id, request.type,
-        )
+        log.exception("Handler crashed", extra=_ctx)
         await _emit_error_final(
             request, code=errors.INTERNAL,
             message=f"{type(e).__name__}",
@@ -172,9 +171,10 @@ async def _publish_and_finalize(
             request.id, request.from_, lifecycle.RESPONSE_PUBLISHED
         )
     except Exception:
-        log.exception(
-            "Failed to emit response id=%s to=%s", request.id, request.from_
-        )
+        log.exception("Failed to emit response", extra={
+            "request_id": request.id, "node_id": request.from_,
+            "rpc_type": request.type,
+        })
     await store.record_completion(
         request.id,
         request.from_,
