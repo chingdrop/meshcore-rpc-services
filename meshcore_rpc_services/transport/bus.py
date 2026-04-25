@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Optional
 
@@ -31,6 +32,7 @@ class MqttBus:
 
         self._gateway_status: Optional[str] = None
         self._gateway_health: Optional[str] = None
+        self._gateway_snapped_at: Optional[float] = None
         self._lock = asyncio.Lock()
 
     @asynccontextmanager
@@ -86,6 +88,7 @@ class MqttBus:
                 self._gateway_status = payload
             else:
                 self._gateway_health = payload
+            self._gateway_snapped_at = time.time()
             status_now, health_now = self._gateway_status, self._gateway_health
 
         if self._store is not None:
@@ -101,4 +104,5 @@ class MqttBus:
             return {
                 "status": self._gateway_status,
                 "health": self._gateway_health,
+                "snapped_at": self._gateway_snapped_at,
             }
