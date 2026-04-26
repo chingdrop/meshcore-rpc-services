@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python *)"
+      "Bash(python *)",
+      "Read(//mnt/c/Users/churley/Code/**)",
+      "Bash(.venv/Scripts/python.exe -m pytest -m \"not integration\" -v)",
+      "Bash(.venv/Scripts/python -m pytest -m \"not integration\" -v)",
+      "Bash(pytest *)"
     ]
   }
 }

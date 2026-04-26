@@ -1,0 +1,43 @@
+[Unit]
+Description=MeshCore-to-MQTT gateway
+Documentation=https://github.com/your-username/meshcore-mqtt
+After=network-online.target mosquitto.service
+Wants=network-online.target mosquitto.service
+# The gateway needs the serial device. Block startup until udev has
+# created the symlink.
+Requires=dev-meshcore\x2dgateway.device
+After=dev-meshcore\x2dgateway.device
+
+[Service]
+Type=simple
+User=meshcore
+Group=meshcore
+# We need dialout group membership to open /dev/ttyACM*. The
+# `meshcore` user must be in `dialout` (the install script handles this).
+SupplementaryGroups=dialout
+
+ExecStart=/opt/meshcore-mqtt/venv/bin/meshcore-mqtt run \
+    --config-file /etc/meshcore-mqtt/config.yaml
+
+# The gateway can crash if the radio is unplugged or the broker
+# disappears mid-stream. Always restart, with a small backoff to
+# avoid burning battery on a hard failure (e.g. radio missing entirely).
+Restart=always
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+
+# Hardening. Note we do NOT use ProtectSystem=strict because the
+# gateway needs to read the serial device. PrivateDevices=false is
+# the explicit version of the same constraint.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+# The serial device is what we're here for; do NOT enable PrivateDevices.
+
+[Install]
+WantedBy=multi-user.target

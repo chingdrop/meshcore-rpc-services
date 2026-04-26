@@ -1,0 +1,43 @@
+# /etc/udev/rules.d/99-meshcore-gateway.rules
+#
+# Creates a stable symlink /dev/meshcore-gateway pointing at the RAK4631's
+# USB serial port, regardless of whether the kernel assigned it ttyACM0,
+# ttyACM1, or ttyUSB0.
+#
+# To find your board's VID/PID:
+#
+#     1. Plug in the RAK4631
+#     2. Run: lsusb
+#        Expected output line, something like:
+#            Bus 001 Device 005: ID 1915:520f Nordic Semiconductor ASA
+#        That ID after "ID" is VID:PID, here 1915:520f.
+#     3. Replace the placeholder values below.
+#     4. Reload udev:
+#            sudo udevadm control --reload-rules
+#            sudo udevadm trigger
+#     5. Verify:
+#            ls -l /dev/meshcore-gateway
+#
+# After this rule is in place, the gateway config can use:
+#     meshcore:
+#       connection_type: serial
+#       address: /dev/meshcore-gateway
+#
+# The MODE="0660" GROUP="dialout" pair lets the `meshcore` user (which is
+# in the dialout group, see deploy/install.sh) read/write the device
+# without root.
+
+# REPLACE the VID/PID below with what `lsusb` shows for your RAK4631.
+# Common RAK4631 firmware variants:
+#   1915:520f  — Nordic SoftDevice (default vendor stack)
+#   239a:8029  — Adafruit nRF52 bootloader (used by some RAK builds)
+#   2886:802d  — Seeed-flashed variants
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1915", ATTRS{idProduct}=="520f", \
+    SYMLINK+="meshcore-gateway", MODE="0660", GROUP="dialout"
+
+# If you have multiple RAK boards on one Pi, distinguish them by serial
+# number. ATTRS{serial} is shown by `udevadm info -a /dev/ttyACM0`.
+# Example:
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="1915", ATTRS{idProduct}=="520f", \
+#     ATTRS{serial}=="ABCD1234", SYMLINK+="meshcore-gateway-1", \
+#     MODE="0660", GROUP="dialout"

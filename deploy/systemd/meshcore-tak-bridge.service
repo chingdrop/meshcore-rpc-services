@@ -1,0 +1,40 @@
+[Unit]
+Description=MeshCore TAK / ATAK bridge
+Documentation=https://github.com/your-username/meshcore-rpc-services
+# We need the broker. We benefit from the RPC service being up
+# (it's what populates the retained mc/node/+ topics we consume), but
+# we don't strictly require it — retained MQTT means we can come up
+# alone and pick up state when the service publishes later.
+After=network-online.target mosquitto.service meshcore-rpc-services.service
+Wants=network-online.target mosquitto.service
+# Soft dependency on the RPC service: we'll be ordered after it but
+# survive without it.
+
+[Service]
+Type=simple
+User=meshcore
+Group=meshcore
+
+ExecStart=/opt/meshcore-rpc-services/venv/bin/meshcore-tak-bridge \
+    --config /etc/meshcore-rpc-services/config.yaml
+
+# The bridge has no persistent state; restart is cheap.
+Restart=always
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+
+# Hardening. The bridge needs to make outbound TCP to the TAK Server,
+# which is fine — none of the protections below block it.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+# No state directory: this process is memory-only.
+
+[Install]
+WantedBy=multi-user.target

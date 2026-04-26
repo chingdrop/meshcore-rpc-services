@@ -1,0 +1,45 @@
+[Unit]
+Description=MeshCore RPC services
+Documentation=https://github.com/your-username/meshcore-rpc-services
+# Wait for the broker; we won't function without it.
+After=network-online.target mosquitto.service
+Wants=network-online.target mosquitto.service
+
+[Service]
+Type=simple
+User=meshcore
+Group=meshcore
+
+# Use the venv's binary directly. PATH manipulation isn't necessary
+# because console_scripts have absolute shebangs.
+ExecStart=/opt/meshcore-rpc-services/venv/bin/meshcore-rpc-services run \
+    --config /etc/meshcore-rpc-services/config.yaml
+
+# Restart policy: always come back. Pi off-grid means we can't rely on
+# a human noticing a crash. RestartSec gives us a small backoff so a
+# tight crash loop doesn't burn battery.
+Restart=always
+RestartSec=5
+
+# Where the SQLite DB lives. systemd will create this directory if it
+# doesn't exist and chown it to User above.
+StateDirectory=meshcore-rpc-services
+StateDirectoryMode=0755
+
+# Logs go to journald. View with:
+#   journalctl -u meshcore-rpc-services -f
+StandardOutput=journal
+StandardError=journal
+
+# Hardening. The service does not need any of these capabilities.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/meshcore-rpc-services
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target
