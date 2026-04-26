@@ -22,3 +22,48 @@ service:
   retention:
     days: 30
     interval_s: 3600.0
+
+  base:
+    # Where the Home Node's location comes from. Three sources:
+    #   static — fixed lat/lon below; never moves
+    #   gpsd   — read from a local gpsd daemon (Pi has its own GPS)
+    #   mqtt   — set externally; the service won't write base location itself
+    source: "static"
+
+    # Used when source=static
+    static_lat: null
+    static_lon: null
+
+    # Used when source=gpsd
+    gpsd_host: "127.0.0.1"
+    gpsd_port: 2947
+    publish_interval_s: 30.0
+    # Reject fixes whose horizontal accuracy is worse than this many meters.
+    # null = accept whatever GPSD reports (the GPS chip is the only filter).
+    max_acc_m: null
+
+# TAK / ATAK bridge configuration. Only consumed by the
+# `meshcore-tak-bridge` CLI. The RPC service ignores this section, so a
+# single config.yaml can drive both processes.
+tak:
+  # Distinct MQTT client_id so the bridge and the service can both connect
+  # to the broker without colliding.
+  mqtt_client_id: "meshcore-tak-bridge"
+
+  server:
+    host: "192.168.1.50"   # your TAK Server LAN IP
+    port: 8087             # standard CoT TCP port
+
+  # `{id}` is replaced with the first 6 chars of the node pubkey.
+  callsign_template: "MC-{id}"
+
+  # CoT taxonomy. See https://wiki.tak.gov/info/cot.
+  # a-f-G-U-C   = friendly, ground, unit, combat
+  # a-f-G-U-C-I = friendly, ground, unit, combat, infantry-installation
+  field_node_cot_type: "a-f-G-U-C"
+  base_cot_type: "a-f-G-U-C-I"
+
+  # Heartbeat: republish every entity this often, even with no change.
+  publish_interval_s: 10.0
+  # CoT staleness window. ATAK fades markers automatically past this.
+  stale_after_s: 300

@@ -147,3 +147,49 @@ async def test_get_base_location_round_trip(state):
 @pytest.mark.asyncio
 async def test_get_base_location_none_when_never_set(state):
     assert await state.get_base_location() is None
+
+
+# ---------------------------------------------------------------------------
+# Radio metadata (RSSI/SNR) tracking
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_apply_seen_records_radio_metadata(state):
+    await state.apply_seen("alice", ts=1.0, rssi=-92, snr=6.5)
+    st = await state.get_node_state("alice")
+    assert st is not None
+    assert st["rssi"] == -92
+    assert st["snr"] == pytest.approx(6.5)
+
+
+@pytest.mark.asyncio
+async def test_apply_seen_without_radio_keeps_previous(state):
+    """A second seen-event without RSSI/SNR shouldn't wipe the prior reading."""
+    await state.apply_seen("alice", ts=1.0, rssi=-92, snr=6.5)
+    await state.apply_seen("alice", ts=2.0)  # no radio data this time
+    st = await state.get_node_state("alice")
+    assert st["rssi"] == -92
+    assert st["snr"] == pytest.approx(6.5)
+
+
+@pytest.mark.asyncio
+async def test_apply_seen_updates_radio_when_provided(state):
+    await state.apply_seen("alice", ts=1.0, rssi=-92, snr=6.5)
+    await state.apply_seen("alice", ts=2.0, rssi=-80, snr=9.0)
+    st = await state.get_node_state("alice")
+    assert st["rssi"] == -80
+    assert st["snr"] == pytest.approx(9.0)
+
+
+@pytest.mark.asyncio
+async def test_state_body_omits_radio_when_never_known(state):
+    await state.apply_seen("zach", ts=1.0)  # no RSSI/SNR ever
+    import json
+    state_msg = next(
+        payload for (t, payload, _) in state.published
+        if t.endswith("/state")
+    )
+    body = json.loads(state_msg)
+    # _compact_json drops None values to keep retained payloads small.
+    assert "rssi" not in body
+    assert "snr" not in body
