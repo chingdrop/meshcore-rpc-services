@@ -53,6 +53,10 @@ class StateAggregator:
     def __init__(self, store: Store, publish: Publisher) -> None:
         self._store = store
         self._publish = publish
+        # Last-known radio metadata per node. Memory-only — these are
+        # ephemeral and don't survive a restart, which is fine: a fresh
+        # service has no recent radio reception to report on.
+        self._last_radio: dict[str, dict[str, Any]] = {}
 
     # -----------------------------------------------------------------
     # Inbound: apply_*  (called by handlers + bus subscribers)
@@ -63,6 +67,10 @@ class StateAggregator:
         *, rssi: Optional[int] = None, snr: Optional[float] = None,
     ) -> None:
         await self._store.mark_node_seen(node_id, ts)
+        if rssi is not None or snr is not None:
+            self._last_radio[node_id] = {
+                "rssi": rssi, "snr": snr, "ts": ts,
+            }
         await self._republish_state(node_id)
 
     async def apply_location(
@@ -74,6 +82,10 @@ class StateAggregator:
             node_id=node_id, fix=fix, source=source, rssi=rssi, snr=snr,
         )
         await self._store.mark_node_seen(node_id, fix.ts)
+        if rssi is not None or snr is not None:
+            self._last_radio[node_id] = {
+                "rssi": rssi, "snr": snr, "ts": fix.ts,
+            }
 
         body: dict[str, Any] = {
             "id": node_id,
@@ -137,6 +149,7 @@ class StateAggregator:
             return None
         loc = await self._store.get_node_location(node_id)
         bat = await self._store.get_node_battery(node_id)
+        radio = self._last_radio.get(node_id) or {}
         now = time.time()
         return {
             "id": node_id,
@@ -145,6 +158,10 @@ class StateAggregator:
             "online": (now - last_seen) < ONLINE_THRESHOLD_S,
             "loc_ts": loc.get("ts") if loc else None,
             "bat_pct": bat.get("pct") if bat else None,
+            # Last-known signal quality from the most recent reception.
+            # Memory-only; resets on service restart.
+            "rssi": radio.get("rssi"),
+            "snr": radio.get("snr"),
         }
 
     async def get_base_location(self) -> Optional[dict]:

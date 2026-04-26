@@ -47,8 +47,19 @@ class RetentionConfig(BaseModel):
 
 class BaseLocationConfig(BaseModel):
     source: Literal["static", "gpsd", "mqtt"] = "static"
+    # Static source
     static_lat: Optional[float] = None
     static_lon: Optional[float] = None
+    # GPSD source
+    gpsd_host: str = "127.0.0.1"
+    gpsd_port: int = 2947
+    # How often to publish the base location (seconds). Doesn't gate updates;
+    # the publisher always publishes when GPSD reports a fix change. This
+    # value just sets the maximum quiet period before a republish.
+    publish_interval_s: float = 30.0
+    # Reject fixes worse than this (HDOP-ish threshold via reported accuracy
+    # in meters). None = accept whatever GPSD reports.
+    max_acc_m: Optional[float] = None
 
 
 class ServiceConfig(BaseModel):
@@ -57,6 +68,33 @@ class ServiceConfig(BaseModel):
     timeouts: TimeoutConfig = Field(default_factory=TimeoutConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
     base: BaseLocationConfig = Field(default_factory=BaseLocationConfig)
+
+
+class TakServerConfig(BaseModel):
+    """Where the TAK Server lives. Used by the meshcore-tak-bridge CLI."""
+
+    host: str = "127.0.0.1"
+    port: int = 8087
+
+
+class TakBridgeConfig(BaseModel):
+    """TAK bridge tuning.
+
+    Only consumed by the `meshcore-tak-bridge` CLI; the RPC service
+    process ignores this section. Keeping it under the same AppConfig
+    so a single config.yaml can drive both processes when they share
+    a Pi.
+    """
+
+    # Distinct MQTT client_id so the bridge and the RPC service can
+    # connect to the same broker without colliding.
+    mqtt_client_id: str = "meshcore-tak-bridge"
+    server: TakServerConfig = Field(default_factory=TakServerConfig)
+    callsign_template: str = "MC-{id}"
+    field_node_cot_type: str = "a-f-G-U-C"
+    base_cot_type: str = "a-f-G-U-C-I"
+    publish_interval_s: float = 10.0
+    stale_after_s: int = 300
 
 
 class AppConfig(BaseSettings):
@@ -68,6 +106,7 @@ class AppConfig(BaseSettings):
 
     mqtt: MQTTConfig = Field(default_factory=MQTTConfig)
     service: ServiceConfig = Field(default_factory=ServiceConfig)
+    tak: TakBridgeConfig = Field(default_factory=TakBridgeConfig)
 
     @classmethod
     def load(cls, path: Optional[str] = None) -> "AppConfig":

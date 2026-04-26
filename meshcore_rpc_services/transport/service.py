@@ -44,6 +44,38 @@ def _safe_json(payload: bytes) -> Optional[dict]:
         return None
 
 
+def _extract_radio_metadata(
+    payload: bytes,
+) -> tuple[Optional[int], Optional[float]]:
+    """Pull (rssi, snr) from a direct-message event payload, if present.
+
+    The gateway publishes Event objects whose `payload` dict carries
+    `RSSI` and `SNR` (uppercase) when MeshCore reported them. Both fields
+    are optional — a basic v3 PRIV packet always carries SNR but RSSI is
+    only present if `decrypt_channels` was on or some other path attached
+    it. We accept the flat shape too, in case anyone publishes one.
+    """
+    data = _safe_json(payload)
+    if not isinstance(data, dict):
+        return None, None
+    inner = data.get("payload") if isinstance(data.get("payload"), dict) else data
+    if not isinstance(inner, dict):
+        return None, None
+
+    rssi_raw = inner.get("RSSI") if "RSSI" in inner else inner.get("rssi")
+    snr_raw = inner.get("SNR") if "SNR" in inner else inner.get("snr")
+
+    rssi: Optional[int] = None
+    if isinstance(rssi_raw, (int, float)):
+        rssi = int(rssi_raw)
+
+    snr: Optional[float] = None
+    if isinstance(snr_raw, (int, float)):
+        snr = float(snr_raw)
+
+    return rssi, snr
+
+
 class Service:
     def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
@@ -77,6 +109,9 @@ class Service:
             interval_s=cfg.service.retention.interval_s,
         )
 
+        # Lazily set in _init_gpsd_base when source=gpsd. None otherwise.
+        self._gpsd = None  # type: ignore[var-annotated]
+
         self._tasks: set[asyncio.Task] = set()
 
     # ------------------------------------------------------------------
@@ -88,7 +123,7 @@ class Service:
         try:
             async with self._bus.connect():
                 await self._publish_health("running")
-                await self._push_static_base_location()
+                await self._init_base_location()
                 self._sweeper.start()
                 heartbeat = asyncio.create_task(self._heartbeat())
                 try:
@@ -100,6 +135,8 @@ class Service:
                     except asyncio.CancelledError:
                         pass
                     await self._sweeper.stop()
+                    if self._gpsd is not None:
+                        await self._gpsd.stop()
                     try:
                         await self._publish_health("stopped")
                     except Exception:
@@ -169,19 +206,82 @@ class Service:
     # Consume loop
     # ------------------------------------------------------------------
 
-    async def _push_static_base_location(self) -> None:
+    async def _init_base_location(self) -> None:
+        """Set up the base-location source per configuration.
+
+        Three sources supported:
+          * `static` — push a one-shot fix from config.
+          * `gpsd` — start a background GPSD client; each TPV becomes a
+            base-location publish.
+          * `mqtt` — placeholder. The base location is whatever someone
+            publishes to `mc/base/location`. We don't interfere.
+        """
         cfg = self._cfg.service.base
-        if cfg.source != "static" or cfg.static_lat is None or cfg.static_lon is None:
+        if cfg.source == "static":
+            await self._init_static_base()
+        elif cfg.source == "gpsd":
+            await self._init_gpsd_base()
+        elif cfg.source == "mqtt":
+            log.info("Base location source: mqtt (external publisher expected)")
+        else:
+            log.warning("Unknown base location source %r; skipping", cfg.source)
+
+    async def _init_static_base(self) -> None:
+        cfg = self._cfg.service.base
+        if cfg.static_lat is None or cfg.static_lon is None:
+            log.info("Base location source=static but lat/lon unset; skipping")
             return
         from meshcore_rpc_services.state import LocationFix
         fix = LocationFix(
-            lat=cfg.static_lat,
-            lon=cfg.static_lon,
-            ts=time.time(),
-            fix=3,
+            lat=cfg.static_lat, lon=cfg.static_lon,
+            ts=time.time(), fix=3,
         )
         await self._state.apply_base_location(fix, source="static")
         log.info("Base location set from config: lat=%.6f lon=%.6f", fix.lat, fix.lon)
+
+    async def _init_gpsd_base(self) -> None:
+        from meshcore_rpc_services.gpsd import GpsdClient, GpsdFix
+        from meshcore_rpc_services.state import LocationFix
+
+        cfg = self._cfg.service.base
+
+        last_publish: list[float] = [0.0]
+        last_pos: list[Optional[tuple[float, float]]] = [None]
+
+        async def on_fix(fix: GpsdFix) -> None:
+            now = time.time()
+            # Republish if position moved a noticeable amount, or if the
+            # publish_interval_s quiet timer elapsed. Tiny movements get
+            # absorbed because retained MQTT publishes have a real cost
+            # on a Pi running off battery.
+            moved = True
+            if last_pos[0] is not None:
+                dlat = abs(fix.lat - last_pos[0][0])
+                dlon = abs(fix.lon - last_pos[0][1])
+                # ~1 meter at the equator ≈ 9e-6 degrees. Threshold = 5m.
+                moved = (dlat > 4.5e-5) or (dlon > 4.5e-5)
+
+            quiet_too_long = (now - last_publish[0]) >= cfg.publish_interval_s
+            if not moved and not quiet_too_long:
+                return
+
+            await self._state.apply_base_location(
+                LocationFix(
+                    lat=fix.lat, lon=fix.lon, ts=fix.ts,
+                    alt=fix.alt, acc=fix.acc, fix=fix.fix,
+                    spd=fix.spd, hdg=fix.hdg,
+                ),
+                source="gpsd",
+            )
+            last_publish[0] = now
+            last_pos[0] = (fix.lat, fix.lon)
+
+        self._gpsd = GpsdClient(
+            host=cfg.gpsd_host, port=cfg.gpsd_port,
+            on_fix=on_fix, max_acc_m=cfg.max_acc_m,
+        )
+        self._gpsd.start()
+        log.info("Base location source: gpsd at %s:%d", cfg.gpsd_host, cfg.gpsd_port)
 
     async def _consume_loop(self) -> None:
         _gw = topics.GATEWAY_NATIVE_PREFIX
@@ -209,7 +309,8 @@ class Service:
     ) -> None:
         if topic.startswith(direct_prefix):
             pubkey = topic[len(direct_prefix):]
-            await self._state.apply_seen(pubkey, time.time())
+            rssi, snr = _extract_radio_metadata(payload)
+            await self._state.apply_seen(pubkey, time.time(), rssi=rssi, snr=snr)
         elif topic == battery_topic:
             data = _safe_json(payload)
             if data:
