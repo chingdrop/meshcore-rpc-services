@@ -87,6 +87,7 @@ class Service:
         self._log_startup_summary()
         try:
             async with self._bus.connect():
+                await self._push_static_base_location()
                 self._sweeper.start()
                 try:
                     await self._consume_loop()
@@ -140,6 +141,20 @@ class Service:
     # ------------------------------------------------------------------
     # Consume loop
     # ------------------------------------------------------------------
+
+    async def _push_static_base_location(self) -> None:
+        cfg = self._cfg.service.base
+        if cfg.source != "static" or cfg.static_lat is None or cfg.static_lon is None:
+            return
+        from meshcore_rpc_services.state import LocationFix
+        fix = LocationFix(
+            lat=cfg.static_lat,
+            lon=cfg.static_lon,
+            ts=time.time(),
+            fix=3,
+        )
+        await self._state.apply_base_location(fix, source="static")
+        log.info("Base location set from config: lat=%.6f lon=%.6f", fix.lat, fix.lon)
 
     async def _consume_loop(self) -> None:
         _gw = topics.GATEWAY_NATIVE_PREFIX

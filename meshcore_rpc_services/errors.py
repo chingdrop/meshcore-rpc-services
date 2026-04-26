@@ -11,6 +11,10 @@ DUPLICATE = "duplicate"
 TIMEOUT = "timeout"
 INTERNAL = "internal"
 
+# State availability
+STALE = "stale"
+UNAVAILABLE = "unavailable"
+
 
 class RpcError(Exception):
     """Raised by handlers to signal a controlled error response."""

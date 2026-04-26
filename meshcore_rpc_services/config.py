@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Literal, Optional
 
 import yaml
 from pydantic import BaseModel, Field
@@ -45,11 +45,18 @@ class RetentionConfig(BaseModel):
     interval_s: float = 3600.0
 
 
+class BaseLocationConfig(BaseModel):
+    source: Literal["static", "gpsd", "mqtt"] = "static"
+    static_lat: Optional[float] = None
+    static_lon: Optional[float] = None
+
+
 class ServiceConfig(BaseModel):
     db_path: str = "./data/meshcore_rpc_services.sqlite3"
     log_level: str = "INFO"
     timeouts: TimeoutConfig = Field(default_factory=TimeoutConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
+    base: BaseLocationConfig = Field(default_factory=BaseLocationConfig)
 
 
 class AppConfig(BaseSettings):
