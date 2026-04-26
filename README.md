@@ -482,6 +482,101 @@ WantedBy=multi-user.target
 Start order: mosquitto → gateway → rpc-services. All three are independent
 systemd units; `Wants=` + `After=` is sufficient for most setups.
 
+### TAK / ATAK bridge
+
+A separate process — `meshcore-tak-bridge` — translates the retained
+`mc/node/+/{location,state}` and `mc/base/location` topics into
+Cursor-on-Target events and streams them over TCP to a TAK Server on the
+LAN. It ships in this repo (under `meshcore_rpc_services/tak/`) but runs
+as its own console_script with its own systemd unit. It does not touch
+the radio, the gateway, or this service's database; it is a read-only
+consumer of the same MQTT contract everything else is built on.
+
+Topology:
+
+```
+mc/node/+/location  ─┐
+mc/node/+/state     ─┼─→  meshcore-tak-bridge  ─→  CoT-over-TCP  ─→  TAK Server
+mc/base/location    ─┘
+```
+
+#### Why it's in this repo
+
+Same dependencies (aiomqtt, pydantic, click), same runtime model
+(asyncio), same deploy target (Pi or sibling box on the home LAN),
+shared MQTT topic constants. Splitting them into separate repos meant
+versioning, releasing, and coordinating two things that always move
+together. They run as separate processes — that's the boundary that
+matters — but they live in one source tree.
+
+#### Configuration
+
+The bridge reads the same `config.yaml` as the RPC service. The `tak:`
+section is bridge-specific; the service ignores it. See
+`config.example.yaml` for the full set of knobs.
+
+```yaml
+tak:
+  server:
+    host: "192.168.1.50"
+    port: 8087
+  callsign_template: "MC-{id}"
+  publish_interval_s: 10.0
+  stale_after_s: 300
+```
+
+#### Running
+
+```bash
+meshcore-tak-bridge --config /etc/meshcore-rpc-services/config.yaml
+```
+
+#### Systemd
+
+A second unit, `meshcore-tak-bridge.service`, runs alongside the main
+service unit:
+
+```ini
+[Unit]
+Description=MeshCore TAK bridge
+After=network.target mosquitto.service meshcore-rpc-services.service
+Wants=mosquitto.service meshcore-rpc-services.service
+
+[Service]
+ExecStart=/usr/local/bin/meshcore-tak-bridge --config /etc/meshcore-rpc-services/config.yaml
+Restart=always
+User=meshcore
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### CoT details
+
+* `uid` = `meshcore.<id>` — namespaced so we don't collide with other
+  CoT sources on the same TAK server.
+* `type` = `a-f-G-U-C` (friendly, ground, unit, combat) for field nodes,
+  `a-f-G-U-C-I` for the base. Configurable.
+* `how` = `m-g` — machine, GPS-derived. Correct when the field node sent
+  us its own GPS.
+* `point/hae`, `ce`, `le` — populated when known; sentinel `9999999.0`
+  per CoT convention when not.
+* `detail/contact/@callsign` — what shows on the marker in ATAK.
+* `detail/track/@speed,@course` — when the field node reported them.
+* `detail/remarks` — free-text. We pack `battery=N%; rssi=-X; snr=Y`
+  here; ATAK surfaces it in the marker detail popup.
+
+#### Out of scope (v1)
+
+* TLS to the TAK Server. Plain TCP only. Add `ssl_context` in
+  `takserver._session` when needed.
+* TAK → mesh inbound. The bridge is one-way. Adding a CoT input source
+  would go in this same package; the gateway and RPC service would not
+  need changes.
+* Per-role CoT type mapping. Every field node currently gets the same
+  type. Adding a per-id override map in `tak:` is straightforward when
+  you want different markers for different roles.
+
 ### Service health
 
 On startup the service publishes `{"state": "running", "ts": <unix>}` to

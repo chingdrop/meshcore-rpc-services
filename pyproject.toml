@@ -40,6 +40,7 @@ integration = [
 
 [project.scripts]
 meshcore-rpc-services = "meshcore_rpc_services.cli:main"
+meshcore-tak-bridge = "meshcore_rpc_services.tak.cli:main"
 
 [tool.setuptools.package-data]
 meshcore_rpc_services = ["persistence/schema.sql"]
