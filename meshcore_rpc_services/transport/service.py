@@ -87,17 +87,43 @@ class Service:
         self._log_startup_summary()
         try:
             async with self._bus.connect():
+                await self._publish_health("running")
                 await self._push_static_base_location()
                 self._sweeper.start()
+                heartbeat = asyncio.create_task(self._heartbeat())
                 try:
                     await self._consume_loop()
                 finally:
+                    heartbeat.cancel()
+                    try:
+                        await heartbeat
+                    except asyncio.CancelledError:
+                        pass
                     await self._sweeper.stop()
+                    try:
+                        await self._publish_health("stopped")
+                    except Exception:
+                        log.exception("Failed to publish stopped health")
         finally:
             if self._tasks:
                 log.info("Waiting on %d in-flight request tasks", len(self._tasks))
                 await asyncio.wait(self._tasks, timeout=5.0)
             self._store.close()
+
+    async def _publish_health(self, state: str) -> None:
+        payload = json.dumps({"state": state, "ts": time.time()}).encode("utf-8")
+        await self._bus.publish(topics.SVC_HEALTH, payload, retain=True)
+
+    async def _heartbeat(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep(30)
+                try:
+                    await self._publish_health("running")
+                except Exception:
+                    log.exception("Heartbeat publish failed")
+        except asyncio.CancelledError:
+            pass
 
     def _log_startup_summary(self) -> None:
         tmo = self._cfg.service.timeouts
@@ -136,6 +162,7 @@ class Service:
         log.info("     - %s/<node_id>", topics.RPC_RESPONSE_PREFIX)
         log.info("     - %s/<node_id>/{location,battery,state}", topics.NODE_PREFIX)
         log.info("     - %s", topics.BASE_LOCATION)
+        log.info("     - %s (retained, heartbeat 30s)", topics.SVC_HEALTH)
         log.info("=" * 60)
 
     # ------------------------------------------------------------------
