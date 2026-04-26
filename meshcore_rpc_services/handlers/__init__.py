@@ -17,6 +17,7 @@ from meshcore_rpc_services.handlers.node_location_report import (
 )
 from meshcore_rpc_services.handlers.node_status import handler as node_status_handler
 from meshcore_rpc_services.handlers.ping import handler as ping_handler
+from meshcore_rpc_services.handlers.return_to_base import handler as return_to_base_handler
 from meshcore_rpc_services.handlers.time_now import handler as time_now_handler
 
 DEFAULT_HANDLERS: list[Handler] = [
@@ -29,4 +30,5 @@ DEFAULT_HANDLERS: list[Handler] = [
     base_location_handler,
     node_location_handler,
     node_status_handler,
+    return_to_base_handler,
 ]
