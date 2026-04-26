@@ -6,9 +6,7 @@ from meshcore_rpc_services.schemas import Request, Response
 
 @pytest.mark.asyncio
 async def test_gateway_status_returns_compact_body(ctx, store):
-    # Seed a couple of completions so the counts aren't all zero.
-    from meshcore_rpc_services.lifecycle import (
-        COMPLETED_OK, )
+    from meshcore_rpc_services.lifecycle import COMPLETED_OK
     fake = Request.model_validate(
         {"v": 1, "id": "x", "type": "ping", "from": "n1"}
     )
@@ -22,22 +20,32 @@ async def test_gateway_status_returns_compact_body(ctx, store):
     resp = await gw.handle(req, ctx)
     assert resp.status == "ok"
     assert resp.body is not None
-    assert resp.body["gw"] == "connected"
-    assert resp.body["hb"] == "ok"
+    assert resp.body["state"] == "connected"
     assert resp.body["ok"] == 1
     assert resp.body["err"] == 0
 
 
 @pytest.mark.asyncio
 async def test_gateway_status_handles_unknown(ctx, snapshot_fn):
-    snapshot_fn.state["status"] = None
-    snapshot_fn.state["health"] = None
+    snapshot_fn.state["state"] = None
 
     req = Request.model_validate(
         {"v": 1, "id": "g2", "type": "gateway.status", "from": "n1"}
     )
     resp = await gw.handle(req, ctx)
     assert resp.body is not None
-    assert resp.body["gw"] == "unknown"
-    assert resp.body["hb"] == "unknown"
+    assert resp.body["state"] == "unknown"
     assert resp.body["pending"] == 0
+
+
+@pytest.mark.asyncio
+async def test_gateway_status_includes_detail_and_since(ctx, snapshot_fn):
+    snapshot_fn.state["detail"] = "serial timeout"
+    snapshot_fn.state["since"] = 1761500000.0
+
+    req = Request.model_validate(
+        {"v": 1, "id": "g3", "type": "gateway.status", "from": "n1"}
+    )
+    resp = await gw.handle(req, ctx)
+    assert resp.body["detail"] == "serial timeout"
+    assert resp.body["since"] == 1761500000.0

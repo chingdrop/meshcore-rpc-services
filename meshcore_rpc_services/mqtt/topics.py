@@ -25,7 +25,6 @@ RPC_REQUEST = "meshcore/rpc/request"
 RPC_RESPONSE_PREFIX = "meshcore/rpc/response"
 
 GATEWAY_STATUS = "meshcore/gateway/status"
-GATEWAY_HEALTH = "meshcore/gateway/health"
 
 
 def rpc_response_topic(node_id: str) -> str:
@@ -64,7 +63,6 @@ __all__ = [
     "RPC_REQUEST",
     "RPC_RESPONSE_PREFIX",
     "GATEWAY_STATUS",
-    "GATEWAY_HEALTH",
     "rpc_response_topic",
     "gateway_native_status",
     "gateway_native_direct_msg_filter",

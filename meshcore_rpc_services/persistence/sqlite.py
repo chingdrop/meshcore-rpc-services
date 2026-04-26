@@ -33,7 +33,13 @@ _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 # Each entry is (target_version, sql). Applied in order when the stored
 # schema version is below target_version. Add new entries here as the schema
 # evolves; never edit or remove existing ones.
-_MIGRATIONS: list[tuple[int, str]] = []
+_MIGRATIONS: list[tuple[int, str]] = [
+    (2, """
+        ALTER TABLE gateway_snapshots ADD COLUMN state TEXT;
+        ALTER TABLE gateway_snapshots ADD COLUMN detail TEXT;
+        ALTER TABLE gateway_snapshots ADD COLUMN since_ts REAL;
+    """),
+]
 
 
 class Store:
@@ -131,10 +137,11 @@ class Store:
     # ------------------------------------------------------------------
 
     async def record_gateway_snapshot(
-            self, *, status: Optional[str], health: Optional[str]
+            self, *, state: Optional[str], detail: Optional[str],
+            since: Optional[float],
     ) -> None:
         await asyncio.to_thread(
-            self._sync_record_gateway_snapshot, status, health
+            self._sync_record_gateway_snapshot, state, detail, since
         )
 
     # ------------------------------------------------------------------
@@ -225,13 +232,15 @@ class Store:
         return float(row[0]) if row else None
 
     def _sync_record_gateway_snapshot(
-            self, status: Optional[str], health: Optional[str]
+            self, state: Optional[str], detail: Optional[str],
+            since: Optional[float],
     ) -> None:
         with self._conn:
             self._conn.execute(
-                "INSERT INTO gateway_snapshots (ts, status, health) "
-                "VALUES (?, ?, ?)",
-                (time.time(), status, health),
+                "INSERT INTO gateway_snapshots "
+                "(ts, status, health, state, detail, since_ts) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (time.time(), state, None, state, detail, since),
             )
 
     def _sync_count_by_final_state(self) -> dict[str, int]:

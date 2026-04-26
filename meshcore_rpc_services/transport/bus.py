@@ -8,6 +8,7 @@ writes each snapshot to the :class:`Store` for history.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -30,8 +31,9 @@ class MqttBus:
         self._client: Optional[aiomqtt.Client] = None
         self._store = store  # None in tests that don't care about history
 
-        self._gateway_status: Optional[str] = None
-        self._gateway_health: Optional[str] = None
+        self._gateway_state: Optional[str] = None
+        self._gateway_detail: Optional[str] = None
+        self._gateway_since: Optional[float] = None
         self._gateway_snapped_at: Optional[float] = None
         self._lock = asyncio.Lock()
 
@@ -47,7 +49,6 @@ class MqttBus:
         async with client:
             self._client = client
             await client.subscribe(topics.GATEWAY_STATUS, qos=self._cfg.qos)
-            await client.subscribe(topics.GATEWAY_HEALTH, qos=self._cfg.qos)
             await client.subscribe(topics.RPC_REQUEST, qos=self._cfg.qos)
             log.info(
                 "MQTT connected: %s:%s (client_id=%s, qos=%s)",
@@ -78,23 +79,28 @@ class MqttBus:
 
     async def _maybe_cache(self, msg: aiomqtt.Message) -> None:
         topic = str(msg.topic)
-        if topic not in (topics.GATEWAY_STATUS, topics.GATEWAY_HEALTH):
+        if topic != topics.GATEWAY_STATUS:
             return
-        payload = (
-            msg.payload.decode("utf-8", errors="replace") if msg.payload else ""
-        )
+        raw = msg.payload.decode("utf-8", errors="replace") if msg.payload else ""
+        try:
+            parsed = json.loads(raw) if raw else {}
+            state = parsed.get("state", "unknown")
+            detail = parsed.get("detail")
+            since = parsed.get("since")
+        except json.JSONDecodeError:
+            log.warning("Gateway status topic carried non-JSON payload; ignoring")
+            return
+
         async with self._lock:
-            if topic == topics.GATEWAY_STATUS:
-                self._gateway_status = payload
-            else:
-                self._gateway_health = payload
+            self._gateway_state = state
+            self._gateway_detail = detail
+            self._gateway_since = since
             self._gateway_snapped_at = time.time()
-            status_now, health_now = self._gateway_status, self._gateway_health
 
         if self._store is not None:
             try:
                 await self._store.record_gateway_snapshot(
-                    status=status_now, health=health_now
+                    state=state, detail=detail, since=since
                 )
             except Exception:
                 log.exception("Failed to persist gateway snapshot")
@@ -102,7 +108,8 @@ class MqttBus:
     async def get_gateway_snapshot(self) -> dict[str, Any]:
         async with self._lock:
             return {
-                "status": self._gateway_status,
-                "health": self._gateway_health,
+                "state": self._gateway_state,
+                "detail": self._gateway_detail,
+                "since": self._gateway_since,
                 "snapped_at": self._gateway_snapped_at,
             }

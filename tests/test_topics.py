@@ -16,7 +16,6 @@ def test_internal_constants_are_stable():
     assert topics.RPC_REQUEST == "meshcore/rpc/request"
     assert topics.RPC_RESPONSE_PREFIX == "meshcore/rpc/response"
     assert topics.GATEWAY_STATUS == "meshcore/gateway/status"
-    assert topics.GATEWAY_HEALTH == "meshcore/gateway/health"
 
 
 def test_gateway_native_helpers():

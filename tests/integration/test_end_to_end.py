@@ -117,10 +117,12 @@ async def test_ping_roundtrip(service_task, broker_host, broker_port):
 async def test_retained_gateway_status_visible_via_handler(
     service_task, broker_host, broker_port
 ):
-    # Seed retained gateway status + health FIRST, then send the request.
-    await _publish_retained(broker_host, broker_port, topics.GATEWAY_STATUS, "connected")
-    await _publish_retained(broker_host, broker_port, topics.GATEWAY_HEALTH, "ok")
-    await asyncio.sleep(0.3)  # let the service ingest the retained messages
+    # Seed retained gateway status as JSON FIRST, then send the request.
+    import time as _time
+    now = _time.time()
+    gw_payload = json.dumps({"state": "connected", "detail": None, "ts": now, "since": now})
+    await _publish_retained(broker_host, broker_port, topics.GATEWAY_STATUS, gw_payload)
+    await asyncio.sleep(0.3)  # let the service ingest the retained message
 
     node = f"itest-{uuid.uuid4().hex[:6]}"
     response_topic = topics.rpc_response_topic(node)
@@ -135,8 +137,7 @@ async def test_retained_gateway_status_visible_via_handler(
         )
         resp = await collector.wait_for(req_id)
         assert resp["status"] == "ok"
-        assert resp["body"]["gw"] == "connected"
-        assert resp["body"]["hb"] == "ok"
+        assert resp["body"]["state"] == "connected"
     finally:
         await collector.stop()
 

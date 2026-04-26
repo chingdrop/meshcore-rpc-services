@@ -75,7 +75,7 @@ async def test_node_registry_round_trip(store):
 
 @pytest.mark.asyncio
 async def test_gateway_snapshots_are_recorded(store):
-    await store.record_gateway_snapshot(status="connected", health="ok")
-    await store.record_gateway_snapshot(status="disconnected", health=None)
+    await store.record_gateway_snapshot(state="connected", detail=None, since=1000.0)
+    await store.record_gateway_snapshot(state="disconnected", detail="serial error", since=None)
     cur = store._conn.execute("SELECT COUNT(*) FROM gateway_snapshots")
     assert cur.fetchone()[0] == 2

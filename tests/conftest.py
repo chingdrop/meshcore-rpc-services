@@ -31,7 +31,7 @@ def store(tmp_path):
 @pytest.fixture
 def snapshot_fn():
     """A callable returning a mutable gateway-snapshot dict."""
-    state = {"status": "connected", "health": "ok"}
+    state = {"state": "connected", "detail": None, "since": None, "snapped_at": None}
 
     async def _get():
         return dict(state)

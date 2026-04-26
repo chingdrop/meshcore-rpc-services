@@ -30,8 +30,9 @@ class GatewayStatusHandler:
         )
 
         body = {
-            "gw": snap.get("status") or "unknown",
-            "hb": snap.get("health") or "unknown",
+            "state": snap.get("state") or "unknown",
+            "detail": snap.get("detail"),
+            "since": snap.get("since"),
             "snap_age_s": snap_age_s,
             "pending": counts.get("pending", 0),
             "ok": counts.get(COMPLETED_OK, 0),
