@@ -4,8 +4,8 @@ import time
 
 import pytest
 
-from meshcore_rpc_services.handlers.return_to_base import ReturnToBaseHandler, _MAX_AGE_S
 from meshcore_rpc_services.errors import STALE, UNAVAILABLE, RpcError
+from meshcore_rpc_services.handlers.return_to_base import ReturnToBaseHandler, _MAX_AGE_S
 from meshcore_rpc_services.schemas import Request
 from meshcore_rpc_services.state import LocationFix
 

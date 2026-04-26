@@ -39,10 +39,13 @@ _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 # evolves; never edit or remove existing ones.
 _MIGRATIONS: list[tuple[int, str]] = [
     (2, """
-        ALTER TABLE gateway_snapshots ADD COLUMN state TEXT;
-        ALTER TABLE gateway_snapshots ADD COLUMN detail TEXT;
-        ALTER TABLE gateway_snapshots ADD COLUMN since_ts REAL;
-    """),
+        ALTER TABLE gateway_snapshots
+            ADD COLUMN state TEXT;
+        ALTER TABLE gateway_snapshots
+            ADD COLUMN detail TEXT;
+        ALTER TABLE gateway_snapshots
+            ADD COLUMN since_ts REAL;
+        """),
 ]
 
 

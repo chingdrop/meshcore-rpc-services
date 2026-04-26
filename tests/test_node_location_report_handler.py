@@ -1,7 +1,5 @@
 """`node.location.report` handler tests."""
 
-import time
-
 import pytest
 
 from meshcore_rpc_services.schemas import Request

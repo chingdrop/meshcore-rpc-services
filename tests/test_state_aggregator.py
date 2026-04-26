@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from meshcore_rpc_services.state import LocationFix, StateAggregator, ONLINE_THRESHOLD_S
+from meshcore_rpc_services.state import LocationFix, ONLINE_THRESHOLD_S
 
 
 # ---------------------------------------------------------------------------

@@ -34,6 +34,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from xml.etree import ElementTree as ET
 
+
 # CoT requires Z-suffixed ISO-8601 with millisecond precision.
 def _isoz(dt: datetime) -> str:
     s = dt.strftime("%Y-%m-%dT%H:%M:%S.")
@@ -41,20 +42,20 @@ def _isoz(dt: datetime) -> str:
 
 
 def build_cot(
-    *,
-    uid: str,
-    cot_type: str,
-    lat: float,
-    lon: float,
-    time_dt: datetime,
-    stale_after_s: float,
-    callsign: Optional[str] = None,
-    alt_m: Optional[float] = None,
-    speed_mps: Optional[float] = None,
-    course_deg: Optional[float] = None,
-    accuracy_m: Optional[float] = None,
-    remarks: Optional[str] = None,
-    how: str = "m-g",
+        *,
+        uid: str,
+        cot_type: str,
+        lat: float,
+        lon: float,
+        time_dt: datetime,
+        stale_after_s: float,
+        callsign: Optional[str] = None,
+        alt_m: Optional[float] = None,
+        speed_mps: Optional[float] = None,
+        course_deg: Optional[float] = None,
+        accuracy_m: Optional[float] = None,
+        remarks: Optional[str] = None,
+        how: str = "m-g",
 ) -> bytes:
     """Build a CoT event as a UTF-8 XML byte string with a trailing newline.
 

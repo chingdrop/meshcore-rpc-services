@@ -40,7 +40,7 @@ class GpsdFix:
     acc: Optional[float] = None  # horizontal accuracy in meters (max of epx/epy)
     spd: Optional[float] = None  # m/s
     hdg: Optional[float] = None  # degrees
-    fix: Optional[int] = None    # 2 or 3 for usable fixes
+    fix: Optional[int] = None  # 2 or 3 for usable fixes
 
 
 FixCallback = Callable[[GpsdFix], Awaitable[None]]
@@ -48,11 +48,11 @@ FixCallback = Callable[[GpsdFix], Awaitable[None]]
 
 class GpsdClient:
     def __init__(
-        self,
-        host: str = "127.0.0.1",
-        port: int = 2947,
-        on_fix: Optional[FixCallback] = None,
-        max_acc_m: Optional[float] = None,
+            self,
+            host: str = "127.0.0.1",
+            port: int = 2947,
+            on_fix: Optional[FixCallback] = None,
+            max_acc_m: Optional[float] = None,
     ) -> None:
         self._host = host
         self._port = port

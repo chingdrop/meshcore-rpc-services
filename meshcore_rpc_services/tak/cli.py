@@ -17,7 +17,6 @@ import yaml
 from pydantic import ValidationError
 
 from meshcore_rpc_services.config import AppConfig
-
 from .bridge import Bridge
 
 

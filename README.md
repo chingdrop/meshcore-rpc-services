@@ -9,16 +9,16 @@ structured responses. It never talks to LoRa hardware.
 
 ## MQTT contract (v1)
 
-| Direction | Topic                             | Notes                        |
-|-----------|-----------------------------------|------------------------------|
-| in        | `mc/rpc/req`                      | RPC requests                 |
-| out       | `mc/rpc/resp/<node_id>`           | One topic per node           |
-| in        | `mc/gateway/status` (retained)    | Cached in memory + persisted |
-| out       | `mc/svc/health` (retained)        | Service liveness             |
-| out       | `mc/node/<id>/location` (retained)| Per-node GPS fix             |
-| out       | `mc/node/<id>/battery` (retained) | Per-node battery             |
-| out       | `mc/node/<id>/state` (retained)   | Per-node online/seen summary |
-| out       | `mc/base/location` (retained)     | Base station GPS fix         |
+| Direction | Topic                              | Notes                        |
+|-----------|------------------------------------|------------------------------|
+| in        | `mc/rpc/req`                       | RPC requests                 |
+| out       | `mc/rpc/resp/<node_id>`            | One topic per node           |
+| in        | `mc/gateway/status` (retained)     | Cached in memory + persisted |
+| out       | `mc/svc/health` (retained)         | Service liveness             |
+| out       | `mc/node/<id>/location` (retained) | Per-node GPS fix             |
+| out       | `mc/node/<id>/battery` (retained)  | Per-node battery             |
+| out       | `mc/node/<id>/state` (retained)    | Per-node online/seen summary |
+| out       | `mc/base/location` (retained)      | Base station GPS fix         |
 
 All topic strings live in `meshcore_rpc_services/mqtt/topics.py`. Don't
 hardcode them elsewhere.
@@ -72,7 +72,9 @@ Error codes: `bad_request`, `unknown_type`, `duplicate`, `timeout`, `internal`, 
 ### `ping`
 
 ```json
-{ "msg": "pong" }
+{
+  "msg": "pong"
+}
 ```
 
 Pass `args.echo` (≤ 64 chars) to get it reflected back alongside `msg`:
@@ -81,31 +83,45 @@ Pass `args.echo` (≤ 64 chars) to get it reflected back alongside `msg`:
 ### `echo`
 
 ```json
-{ "msg": "<args.msg truncated to 180 chars>" }
+{
+  "msg": "<args.msg truncated to 180 chars>"
+}
 ```
 
 ### `time.now`
 
 ```json
-{ "ts": 1714000000.0, "iso": "2024-04-25T00:00:00Z" }
+{
+  "ts": 1714000000.0,
+  "iso": "2024-04-25T00:00:00Z"
+}
 ```
 
 ### `gateway.status`
 
 ```json
-{ "state": "connected", "detail": null, "since": 1714000000.0, "snap_age_s": 42, "pending": 1, "ok": 18, "err": 2, "to": 0 }
+{
+  "state": "connected",
+  "detail": null,
+  "since": 1714000000.0,
+  "snap_age_s": 42,
+  "pending": 1,
+  "ok": 18,
+  "err": 2,
+  "to": 0
+}
 ```
 
-| Field        | Type       | Description                                                            |
-|--------------|------------|------------------------------------------------------------------------|
-| `state`      | string     | Last retained `mc/gateway/status` state field, or `"unknown"`          |
-| `detail`     | string/null| Optional detail string from the gateway status message                 |
-| `since`      | float/null | Unix timestamp when the gateway entered this state                     |
-| `snap_age_s` | int / null | Seconds since cache was last updated; `null` if no message received yet |
-| `pending`    | int        | Requests with no `final_state` yet                                     |
-| `ok`         | int        | `completed_ok` count (all time)                                        |
-| `err`        | int        | `completed_error` count (all time)                                     |
-| `to`         | int        | Timeout count (all time)                                               |
+| Field        | Type        | Description                                                             |
+|--------------|-------------|-------------------------------------------------------------------------|
+| `state`      | string      | Last retained `mc/gateway/status` state field, or `"unknown"`           |
+| `detail`     | string/null | Optional detail string from the gateway status message                  |
+| `since`      | float/null  | Unix timestamp when the gateway entered this state                      |
+| `snap_age_s` | int / null  | Seconds since cache was last updated; `null` if no message received yet |
+| `pending`    | int         | Requests with no `final_state` yet                                      |
+| `ok`         | int         | `completed_ok` count (all time)                                         |
+| `err`        | int         | `completed_error` count (all time)                                      |
+| `to`         | int         | Timeout count (all time)                                                |
 
 When `snap_age_s` is `null` the gateway cache is cold — `state` should
 be treated as unknown regardless of its value.
@@ -113,7 +129,11 @@ be treated as unknown regardless of its value.
 ### `node.last_seen`
 
 ```json
-{ "node": "node-abc", "ts": 1714000000.0, "age_s": 120 }
+{
+  "node": "node-abc",
+  "ts": 1714000000.0,
+  "age_s": 120
+}
 ```
 
 `ts` and `age_s` are `null` if the node has never been seen. Defaults to the
@@ -126,10 +146,20 @@ retained state to `mc/node/<id>/location` and `mc/node/<id>/state`.
 
 ```json
 // args
-{ "lat": 27.94, "lon": -82.29, "ts": 1714000000.0, "alt": 15.5, "acc": 3.0, "fix": 3 }
+{
+  "lat": 27.94,
+  "lon": -82.29,
+  "ts": 1714000000.0,
+  "alt": 15.5,
+  "acc": 3.0,
+  "fix": 3
+}
 
 // response
-{ "ack": true, "ts": 1714000000.0 }
+{
+  "ack": true,
+  "ts": 1714000000.0
+}
 ```
 
 `lat` and `lon` are required. `ts` defaults to server time if absent. All other
@@ -141,10 +171,18 @@ Query the last known location for a node.
 
 ```json
 // args (optional)
-{ "node": "node-abc" }
+{
+  "node": "node-abc"
+}
 
 // response
-{ "node": "node-abc", "lat": 27.94, "lon": -82.29, "ts": 1714000000.0, "age_s": 42 }
+{
+  "node": "node-abc",
+  "lat": 27.94,
+  "lon": -82.29,
+  "ts": 1714000000.0,
+  "age_s": 42
+}
 ```
 
 Defaults to the requester. Returns `unavailable` if the node has never reported
@@ -156,10 +194,17 @@ Query aggregated status for a node.
 
 ```json
 // args (optional)
-{ "node": "node-abc" }
+{
+  "node": "node-abc"
+}
 
 // response
-{ "id": "node-abc", "online": true, "last_seen_age_s": 42, "bat_pct": 85 }
+{
+  "id": "node-abc",
+  "online": true,
+  "last_seen_age_s": 42,
+  "bat_pct": 85
+}
 ```
 
 `online` is `true` if the node was seen within the last 5 minutes. `bat_pct`
@@ -171,7 +216,13 @@ node has never been seen.
 Query the base station's last GPS fix.
 
 ```json
-{ "lat": 27.77, "lon": -82.64, "ts": 1714000000.0, "age_s": 12, "fix": 3 }
+{
+  "lat": 27.77,
+  "lon": -82.64,
+  "ts": 1714000000.0,
+  "age_s": 12,
+  "fix": 3
+}
 ```
 
 Returns `unavailable` if no fix has been set, or `stale` if the fix is older
@@ -191,14 +242,25 @@ Compute bearing and distance from the caller's position to the base.
 
 ```json
 // args (optional — omit to use last reported position)
-{ "lat": 27.94, "lon": -82.29 }
+{
+  "lat": 27.94,
+  "lon": -82.29
+}
 
 // response
 {
   "bearing": 218,
-  "dist_m":  26700,
-  "base": { "lat": 27.77, "lon": -82.64, "age_s": 12 },
-  "from": { "lat": 27.94, "lon": -82.29, "age_s": 0  }
+  "dist_m": 26700,
+  "base": {
+    "lat": 27.77,
+    "lon": -82.64,
+    "age_s": 12
+  },
+  "from": {
+    "lat": 27.94,
+    "lon": -82.29,
+    "age_s": 0
+  }
 }
 ```
 
@@ -466,17 +528,17 @@ service:
 
 ```ini
 [Unit]
-Description=MeshCore RPC services
-After=network.target mosquitto.service
-Wants=mosquitto.service
+Description = MeshCore RPC services
+After = network.target mosquitto.service
+Wants = mosquitto.service
 
 [Service]
-ExecStart=/usr/local/bin/meshcore-rpc-services run --config /etc/meshcore-rpc-services/config.yaml
-Restart=always
-User=meshcore
+ExecStart = /usr/local/bin/meshcore-rpc-services run --config /etc/meshcore-rpc-services/config.yaml
+Restart = always
+User = meshcore
 
 [Install]
-WantedBy=multi-user.target
+WantedBy = multi-user.target
 ```
 
 Start order: mosquitto → gateway → rpc-services. All three are independent
@@ -538,17 +600,17 @@ service unit:
 
 ```ini
 [Unit]
-Description=MeshCore TAK bridge
-After=network.target mosquitto.service meshcore-rpc-services.service
-Wants=mosquitto.service meshcore-rpc-services.service
+Description = MeshCore TAK bridge
+After = network.target mosquitto.service meshcore-rpc-services.service
+Wants = mosquitto.service meshcore-rpc-services.service
 
 [Service]
-ExecStart=/usr/local/bin/meshcore-tak-bridge --config /etc/meshcore-rpc-services/config.yaml
-Restart=always
-User=meshcore
+ExecStart = /usr/local/bin/meshcore-tak-bridge --config /etc/meshcore-rpc-services/config.yaml
+Restart = always
+User = meshcore
 
 [Install]
-WantedBy=multi-user.target
+WantedBy = multi-user.target
 ```
 
 #### CoT details

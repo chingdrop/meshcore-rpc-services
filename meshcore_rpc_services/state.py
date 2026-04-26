@@ -63,8 +63,8 @@ class StateAggregator:
     # -----------------------------------------------------------------
 
     async def apply_seen(
-        self, node_id: str, ts: float,
-        *, rssi: Optional[int] = None, snr: Optional[float] = None,
+            self, node_id: str, ts: float,
+            *, rssi: Optional[int] = None, snr: Optional[float] = None,
     ) -> None:
         await self._store.mark_node_seen(node_id, ts)
         if rssi is not None or snr is not None:
@@ -74,9 +74,9 @@ class StateAggregator:
         await self._republish_state(node_id)
 
     async def apply_location(
-        self, node_id: str, fix: LocationFix,
-        *, source: str,
-        rssi: Optional[int] = None, snr: Optional[float] = None,
+            self, node_id: str, fix: LocationFix,
+            *, source: str,
+            rssi: Optional[int] = None, snr: Optional[float] = None,
     ) -> None:
         await self._store.upsert_node_location(
             node_id=node_id, fix=fix, source=source, rssi=rssi, snr=snr,
@@ -103,9 +103,9 @@ class StateAggregator:
         await self._republish_state(node_id)
 
     async def apply_battery(
-        self, node_id: str, ts: float,
-        *, pct: Optional[int] = None, voltage: Optional[float] = None,
-        source: str = "telemetry",
+            self, node_id: str, ts: float,
+            *, pct: Optional[int] = None, voltage: Optional[float] = None,
+            source: str = "telemetry",
     ) -> None:
         await self._store.upsert_node_battery(
             node_id=node_id, ts=ts, pct=pct, voltage=voltage, source=source,

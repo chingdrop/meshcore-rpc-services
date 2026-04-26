@@ -45,7 +45,7 @@ def _safe_json(payload: bytes) -> Optional[dict]:
 
 
 def _extract_radio_metadata(
-    payload: bytes,
+        payload: bytes,
 ) -> tuple[Optional[int], Optional[float]]:
     """Pull (rssi, snr) from a direct-message event payload, if present.
 
@@ -304,8 +304,8 @@ class Service:
             # GATEWAY_STATUS is cached by the bus; everything else is silently ignored.
 
     async def _route_event(
-        self, topic: str, payload: bytes,
-        direct_prefix: str, battery_topic: str, telemetry_topic: str,
+            self, topic: str, payload: bytes,
+            direct_prefix: str, battery_topic: str, telemetry_topic: str,
     ) -> None:
         if topic.startswith(direct_prefix):
             pubkey = topic[len(direct_prefix):]

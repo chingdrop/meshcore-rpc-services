@@ -27,7 +27,6 @@ import aiomqtt
 
 from meshcore_rpc_services.config import AppConfig
 from meshcore_rpc_services.mqtt import topics
-
 from .cot import build_cot
 from .takserver import TakSink
 
@@ -84,13 +83,13 @@ class Bridge:
         while not self._stop.is_set():
             try:
                 async with aiomqtt.Client(
-                    hostname=mq.host,
-                    port=mq.port,
-                    username=mq.username,
-                    password=mq.password,
-                    # Distinct client_id so we don't collide with the RPC
-                    # service when both connect to the same broker.
-                    identifier=self._cfg.tak.mqtt_client_id,
+                        hostname=mq.host,
+                        port=mq.port,
+                        username=mq.username,
+                        password=mq.password,
+                        # Distinct client_id so we don't collide with the RPC
+                        # service when both connect to the same broker.
+                        identifier=self._cfg.tak.mqtt_client_id,
                 ) as client:
                     await client.subscribe(NODE_LOCATION_FILTER, qos=mq.qos)
                     await client.subscribe(NODE_STATE_FILTER, qos=mq.qos)

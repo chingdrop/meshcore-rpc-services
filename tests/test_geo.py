@@ -1,7 +1,5 @@
 """Tests for geo.py pure functions."""
 
-import math
-
 import pytest
 
 from meshcore_rpc_services.geo import haversine_m, initial_bearing_deg

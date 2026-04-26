@@ -4,8 +4,8 @@ import time
 
 import pytest
 
-from meshcore_rpc_services.handlers.node_status import NodeStatusHandler
 from meshcore_rpc_services.errors import UNAVAILABLE, RpcError
+from meshcore_rpc_services.handlers.node_status import NodeStatusHandler
 from meshcore_rpc_services.schemas import Request
 from meshcore_rpc_services.state import ONLINE_THRESHOLD_S
 

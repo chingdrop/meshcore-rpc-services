@@ -4,7 +4,7 @@ GPSD's reported field shapes vary across versions and devices.
 """
 from __future__ import annotations
 
-from meshcore_rpc_services.gpsd import _parse_tpv, GpsdFix
+from meshcore_rpc_services.gpsd import _parse_tpv
 
 
 def test_parse_tpv_3d_fix():

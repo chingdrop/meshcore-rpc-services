@@ -7,9 +7,9 @@ from meshcore_rpc_services.router import Router
 def test_router_resolves_default_handlers():
     r = Router(DEFAULT_HANDLERS)
     for t in (
-        "ping", "echo", "time.now", "gateway.status", "node.last_seen",
-        "node.location.report", "base.location", "node.location", "node.status",
-        "return_to_base",
+            "ping", "echo", "time.now", "gateway.status", "node.last_seen",
+            "node.location.report", "base.location", "node.location", "node.status",
+            "return_to_base",
     ):
         assert r.resolve(t) is not None
     assert r.resolve("nope") is None
