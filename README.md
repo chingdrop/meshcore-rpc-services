@@ -62,7 +62,7 @@ hardcode them elsewhere.
 }
 ```
 
-Error codes: `bad_request`, `unknown_type`, `duplicate`, `timeout`, `internal`.
+Error codes: `bad_request`, `unknown_type`, `duplicate`, `timeout`, `internal`, `stale`, `unavailable`.
 
 `ttl` and `args` are optional in requests. `ttl` defaults to the policy
 `default_s`; `args` defaults to `{}`.
@@ -118,6 +118,94 @@ be treated as unknown regardless of its value.
 
 `ts` and `age_s` are `null` if the node has never been seen. Defaults to the
 requester's own node id; pass `args.node` to query another node.
+
+### `node.location.report`
+
+Report the caller's current GPS fix. The service persists it and publishes
+retained state to `mc/node/<id>/location` and `mc/node/<id>/state`.
+
+```json
+// args
+{ "lat": 27.94, "lon": -82.29, "ts": 1714000000.0, "alt": 15.5, "acc": 3.0, "fix": 3 }
+
+// response
+{ "ack": true, "ts": 1714000000.0 }
+```
+
+`lat` and `lon` are required. `ts` defaults to server time if absent. All other
+fields are optional. `lat` must be in `[-90, 90]`; `lon` in `[-180, 180]`.
+
+### `node.location`
+
+Query the last known location for a node.
+
+```json
+// args (optional)
+{ "node": "node-abc" }
+
+// response
+{ "node": "node-abc", "lat": 27.94, "lon": -82.29, "ts": 1714000000.0, "age_s": 42 }
+```
+
+Defaults to the requester. Returns `unavailable` if the node has never reported
+a location.
+
+### `node.status`
+
+Query aggregated status for a node.
+
+```json
+// args (optional)
+{ "node": "node-abc" }
+
+// response
+{ "id": "node-abc", "online": true, "last_seen_age_s": 42, "bat_pct": 85 }
+```
+
+`online` is `true` if the node was seen within the last 5 minutes. `bat_pct`
+is omitted if battery has never been reported. Returns `unavailable` if the
+node has never been seen.
+
+### `base.location`
+
+Query the base station's last GPS fix.
+
+```json
+{ "lat": 27.77, "lon": -82.64, "ts": 1714000000.0, "age_s": 12, "fix": 3 }
+```
+
+Returns `unavailable` if no fix has been set, or `stale` if the fix is older
+than 10 minutes. Configure a static base position in `config.yaml`:
+
+```yaml
+service:
+  base:
+    source: static
+    static_lat: 27.77
+    static_lon: -82.64
+```
+
+### `return_to_base`
+
+Compute bearing and distance from the caller's position to the base.
+
+```json
+// args (optional — omit to use last reported position)
+{ "lat": 27.94, "lon": -82.29 }
+
+// response
+{
+  "bearing": 218,
+  "dist_m":  26700,
+  "base": { "lat": 27.77, "lon": -82.64, "age_s": 12 },
+  "from": { "lat": 27.94, "lon": -82.29, "age_s": 0  }
+}
+```
+
+`bearing` is the initial compass bearing toward the base (0–359°). `dist_m` is
+the great-circle distance in metres. Returns `unavailable` if either position
+is unknown, or `stale` if either fix is older than 10 minutes. Passing explicit
+`lat`/`lon` in args bypasses the staleness check on the caller's stored fix.
 
 ## Adding a handler
 
@@ -324,27 +412,32 @@ meshcore_rpc_services/
   core.py             # the pipeline
   router.py           # type → handler
   retention.py        # periodic cleanup
+  state.py            # StateAggregator — node/base location, battery, online flag
+  geo.py              # haversine + bearing (pure functions)
   cli.py              # run / initdb / purge
   mqtt/topics.py      # topic string constants
   timeouts/
     policy.py         # TimeoutPolicy
     tracker.py        # PendingTracker
   persistence/
-    schema.sql        # requests, request_events, gateway_snapshots, nodes, schema_version
+    schema.sql        # requests, request_events, gateway_snapshots, nodes,
+                      # node_locations, node_battery, base_state, schema_version
     sqlite.py         # Store (single class, async surface)
   transport/
     bus.py            # aiomqtt wrapper + gateway snapshot cache
     adapter.py        # MQTT ↔ Request/Response
-    service.py        # orchestrator
+    service.py        # orchestrator + event routing
   handlers/
     base.py           # Handler protocol + HandlerContext
     ping.py / echo.py / time_now.py
     gateway_status.py / node_last_seen.py
+    node_location_report.py / node_location.py / node_status.py
+    base_location.py / return_to_base.py
 scripts/
   send_request.py        # publish a request, print the response
   seed_gateway_status.py # publish retained gateway state
 tests/
-  conftest.py            # store + ctx fixtures
+  conftest.py            # store + state + ctx fixtures
   test_*.py              # unit tests (no broker)
   integration/
     test_end_to_end.py   # broker-backed, skipped if no broker
@@ -355,6 +448,52 @@ config.example.yaml
 .env.example
 CHANGELOG.md
 ```
+
+## Deployment on the Pi
+
+### Database path
+
+The default `db_path` (`./data/meshcore_rpc_services.sqlite3`) is fine for
+development. For a systemd deployment override it so the file survives working
+directory changes:
+
+```yaml
+service:
+  db_path: /var/lib/meshcore-rpc-services/state.sqlite3
+```
+
+### systemd unit
+
+```ini
+[Unit]
+Description=MeshCore RPC services
+After=network.target mosquitto.service
+Wants=mosquitto.service
+
+[Service]
+ExecStart=/usr/local/bin/meshcore-rpc-services run --config /etc/meshcore-rpc-services/config.yaml
+Restart=always
+User=meshcore
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Start order: mosquitto → gateway → rpc-services. All three are independent
+systemd units; `Wants=` + `After=` is sufficient for most setups.
+
+### Service health
+
+On startup the service publishes `{"state": "running", "ts": <unix>}` to
+`mc/svc/health` (retained). A heartbeat republishes every 30 seconds. On
+graceful shutdown it publishes `{"state": "stopped", "ts": <unix>}` before
+disconnecting. A stale `ts` (older than ~60 s) indicates the service is not
+running or the broker lost the connection.
+
+### Offline operation
+
+Nothing in this stack reaches the public internet. The service runs correctly
+with no upstream connectivity — it only needs the local MQTT broker.
 
 ## Known limitations
 
