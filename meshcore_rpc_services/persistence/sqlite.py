@@ -20,10 +20,14 @@ Protocol needed.
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 import time
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from meshcore_rpc_services.state import LocationFix
 
 from meshcore_rpc_services.lifecycle import RECEIVED
 from meshcore_rpc_services.schemas import Request, Response
@@ -145,6 +149,46 @@ class Store:
         )
 
     # ------------------------------------------------------------------
+    # Node locations
+    # ------------------------------------------------------------------
+
+    async def upsert_node_location(
+            self, *, node_id: str, fix: "LocationFix",
+            source: Optional[str], rssi: Optional[int], snr: Optional[float],
+    ) -> None:
+        await asyncio.to_thread(
+            self._sync_upsert_node_location, node_id, fix, source, rssi, snr
+        )
+
+    async def get_node_location(self, node_id: str) -> Optional[dict]:
+        return await asyncio.to_thread(self._sync_get_node_location, node_id)
+
+    # ------------------------------------------------------------------
+    # Node battery
+    # ------------------------------------------------------------------
+
+    async def upsert_node_battery(
+            self, *, node_id: str, ts: float,
+            pct: Optional[int], voltage: Optional[float], source: Optional[str],
+    ) -> None:
+        await asyncio.to_thread(
+            self._sync_upsert_node_battery, node_id, ts, pct, voltage, source
+        )
+
+    async def get_node_battery(self, node_id: str) -> Optional[dict]:
+        return await asyncio.to_thread(self._sync_get_node_battery, node_id)
+
+    # ------------------------------------------------------------------
+    # Base state
+    # ------------------------------------------------------------------
+
+    async def upsert_base_state(self, key: str, value: dict) -> None:
+        await asyncio.to_thread(self._sync_upsert_base_state, key, value)
+
+    async def get_base_state(self, key: str) -> Optional[dict]:
+        return await asyncio.to_thread(self._sync_get_base_state, key)
+
+    # ------------------------------------------------------------------
     # Retention
     # ------------------------------------------------------------------
 
@@ -255,6 +299,77 @@ class Store:
             "SELECT COUNT(*) FROM requests WHERE final_state IS NULL"
         )
         return int(cur.fetchone()[0])
+
+    def _sync_upsert_node_location(
+            self, node_id: str, fix: "LocationFix",
+            source: Optional[str], rssi: Optional[int], snr: Optional[float],
+    ) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO node_locations "
+                "(node_id, lat, lon, alt, acc, fix, spd, hdg, ts, source, rssi, snr) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(node_id) DO UPDATE SET "
+                "lat=excluded.lat, lon=excluded.lon, alt=excluded.alt, "
+                "acc=excluded.acc, fix=excluded.fix, spd=excluded.spd, "
+                "hdg=excluded.hdg, ts=excluded.ts, source=excluded.source, "
+                "rssi=excluded.rssi, snr=excluded.snr",
+                (node_id, fix.lat, fix.lon, fix.alt, fix.acc, fix.fix,
+                 fix.spd, fix.hdg, fix.ts, source, rssi, snr),
+            )
+
+    def _sync_get_node_location(self, node_id: str) -> Optional[dict]:
+        cur = self._conn.execute(
+            "SELECT lat, lon, alt, acc, fix, spd, hdg, ts, source, rssi, snr "
+            "FROM node_locations WHERE node_id = ?",
+            (node_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        cols = ("lat", "lon", "alt", "acc", "fix", "spd", "hdg", "ts", "source", "rssi", "snr")
+        return dict(zip(cols, row))
+
+    def _sync_upsert_node_battery(
+            self, node_id: str, ts: float,
+            pct: Optional[int], voltage: Optional[float], source: Optional[str],
+    ) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO node_battery (node_id, pct, voltage, ts, source) "
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(node_id) DO UPDATE SET "
+                "pct=excluded.pct, voltage=excluded.voltage, "
+                "ts=excluded.ts, source=excluded.source",
+                (node_id, pct, voltage, ts, source),
+            )
+
+    def _sync_get_node_battery(self, node_id: str) -> Optional[dict]:
+        cur = self._conn.execute(
+            "SELECT pct, voltage, ts, source FROM node_battery WHERE node_id = ?",
+            (node_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return {"pct": row[0], "voltage": row[1], "ts": row[2], "source": row[3]}
+
+    def _sync_upsert_base_state(self, key: str, value: dict) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO base_state (key, value_json, ts) VALUES (?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json, ts=excluded.ts",
+                (key, json.dumps(value), time.time()),
+            )
+
+    def _sync_get_base_state(self, key: str) -> Optional[dict]:
+        cur = self._conn.execute(
+            "SELECT value_json FROM base_state WHERE key = ?", (key,)
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return json.loads(row[0])
 
     def _sync_purge_before(self, cutoff_ts: float) -> int:
         with self._conn:

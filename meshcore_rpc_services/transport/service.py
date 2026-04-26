@@ -12,7 +12,10 @@ Sole transport-aware module. Its job:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import time
+from typing import Optional
 
 from meshcore_rpc_services import core
 from meshcore_rpc_services.config import AppConfig
@@ -23,6 +26,7 @@ from meshcore_rpc_services.persistence import Store
 from meshcore_rpc_services.retention import RetentionSweeper
 from meshcore_rpc_services.router import Router
 from meshcore_rpc_services.schemas import Response
+from meshcore_rpc_services.state import StateAggregator
 from meshcore_rpc_services.timeouts import PendingTracker, TimeoutPolicy
 from meshcore_rpc_services.transport.adapter import (
     inbound_to_request,
@@ -31,6 +35,13 @@ from meshcore_rpc_services.transport.adapter import (
 from meshcore_rpc_services.transport.bus import MqttBus
 
 log = logging.getLogger(__name__)
+
+
+def _safe_json(payload: bytes) -> Optional[dict]:
+    try:
+        return json.loads(payload.decode("utf-8", errors="replace"))
+    except (json.JSONDecodeError, ValueError):
+        return None
 
 
 class Service:
@@ -49,9 +60,15 @@ class Service:
             per_type_default_s=dict(cfg.service.timeouts.per_type_default_s),
         )
 
+        self._state = StateAggregator(
+            store=self._store,
+            publish=self._bus.publish,
+        )
+
         self._ctx = HandlerContext(
             store=self._store,
             gateway_snapshot=self._bus.get_gateway_snapshot,
+            state=self._state,
         )
 
         self._sweeper = RetentionSweeper(
@@ -106,12 +123,18 @@ class Service:
         log.info("  handlers (%d)   :", len(self._router.types()))
         for t in self._router.types():
             log.info("     - %s", t)
+        _gw = topics.GATEWAY_NATIVE_PREFIX
         log.info("  subscribe:")
         log.info("     - %s", topics.RPC_REQUEST)
         log.info("     - %s", topics.GATEWAY_STATUS)
-        log.info("     - %s", topics.GATEWAY_HEALTH)
+        log.info("     - %s", topics.gateway_native_direct_msg_filter(_gw))
+        log.info("     - %s", topics.gateway_native_battery(_gw))
+        log.info("     - %s", topics.gateway_native_telemetry(_gw))
+        log.info("     - %s", topics.gateway_native_advertisement(_gw))
         log.info("  publish:")
         log.info("     - %s/<node_id>", topics.RPC_RESPONSE_PREFIX)
+        log.info("     - %s/<node_id>/{location,battery,state}", topics.NODE_PREFIX)
+        log.info("     - %s", topics.BASE_LOCATION)
         log.info("=" * 60)
 
     # ------------------------------------------------------------------
@@ -119,14 +142,63 @@ class Service:
     # ------------------------------------------------------------------
 
     async def _consume_loop(self) -> None:
+        _gw = topics.GATEWAY_NATIVE_PREFIX
+        _direct_prefix = f"{_gw}/message/direct/"
+        _battery_topic = topics.gateway_native_battery(_gw)
+        _telemetry_topic = topics.gateway_native_telemetry(_gw)
+
         async for msg in self._bus.messages():
             topic = str(msg.topic)
-            if topic != topics.RPC_REQUEST:
-                # Gateway status/health cached + persisted by the bus.
-                continue
-            task = asyncio.create_task(self._handle_one(topic, msg.payload))
-            self._tasks.add(task)
-            task.add_done_callback(self._tasks.discard)
+            if topic == topics.RPC_REQUEST:
+                task = asyncio.create_task(self._handle_one(topic, msg.payload))
+                self._tasks.add(task)
+                task.add_done_callback(self._tasks.discard)
+            elif topic.startswith(_direct_prefix) or topic in (_battery_topic, _telemetry_topic):
+                try:
+                    await self._route_event(topic, msg.payload,
+                                            _direct_prefix, _battery_topic, _telemetry_topic)
+                except Exception:
+                    log.exception("Failed to route event from %s", topic)
+            # GATEWAY_STATUS is cached by the bus; everything else is silently ignored.
+
+    async def _route_event(
+        self, topic: str, payload: bytes,
+        direct_prefix: str, battery_topic: str, telemetry_topic: str,
+    ) -> None:
+        if topic.startswith(direct_prefix):
+            pubkey = topic[len(direct_prefix):]
+            await self._state.apply_seen(pubkey, time.time())
+        elif topic == battery_topic:
+            data = _safe_json(payload)
+            if data:
+                await self._handle_battery_event(data)
+        elif topic == telemetry_topic:
+            data = _safe_json(payload)
+            if data:
+                await self._handle_telemetry_event(data)
+
+    async def _handle_battery_event(self, data: dict) -> None:
+        # Field names depend on the meshcore-mqtt gateway payload shape.
+        # Populate once real payloads have been captured.
+        node_id: Optional[str] = data.get("pubkey") or data.get("node_id")
+        if not node_id:
+            log.debug("Battery event missing node identifier; dropping: %s", data)
+            return
+        await self._state.apply_battery(
+            node_id, ts=data.get("ts") or time.time(),
+            pct=data.get("pct") or data.get("battery_pct"),
+            voltage=data.get("voltage"),
+            source="telemetry",
+        )
+
+    async def _handle_telemetry_event(self, data: dict) -> None:
+        # Mark the node as seen; extend with location/battery once payload
+        # shape is confirmed from actual gateway captures.
+        node_id: Optional[str] = data.get("pubkey") or data.get("node_id")
+        if not node_id:
+            log.debug("Telemetry event missing node identifier; dropping: %s", data)
+            return
+        await self._state.apply_seen(node_id, ts=data.get("ts") or time.time())
 
     async def _emit(self, node_id: str, response: Response) -> None:
         to, payload = response_to_outbound(response)

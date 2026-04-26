@@ -42,6 +42,20 @@ def snapshot_fn():
 
 
 @pytest.fixture
-def ctx(store, snapshot_fn):
+def state(store):
+    """A StateAggregator backed by the test store with a capturing publisher."""
+    from meshcore_rpc_services.state import StateAggregator
+    published = []
+
+    async def pub(topic, payload, retain):
+        published.append((topic, payload, retain))
+
+    agg = StateAggregator(store, pub)
+    agg.published = published  # type: ignore[attr-defined]
+    return agg
+
+
+@pytest.fixture
+def ctx(store, snapshot_fn, state):
     from meshcore_rpc_services.handlers.base import HandlerContext
-    return HandlerContext(store=store, gateway_snapshot=snapshot_fn)
+    return HandlerContext(store=store, gateway_snapshot=snapshot_fn, state=state)

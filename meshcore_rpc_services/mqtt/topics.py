@@ -59,9 +59,14 @@ def node_state_topic(node_id: str) -> str:
 # configures the full strings at startup based on the configured prefix so
 # these constants are just suffixes/templates.
 
+GATEWAY_NATIVE_PREFIX = "meshcore"
+
 GATEWAY_NATIVE_STATUS_SUFFIX = "status"
 GATEWAY_NATIVE_DIRECT_MSG_FILTER_SUFFIX = "message/direct/+"
 GATEWAY_NATIVE_SEND_MSG_SUFFIX = "command/send_msg"
+GATEWAY_NATIVE_BATTERY_SUFFIX = "battery"
+GATEWAY_NATIVE_TELEMETRY_SUFFIX = "telemetry"
+GATEWAY_NATIVE_ADVERTISEMENT_SUFFIX = "advertisement"
 
 
 def gateway_native_status(prefix: str) -> str:
@@ -76,6 +81,18 @@ def gateway_native_send_msg(prefix: str) -> str:
     return f"{prefix}/{GATEWAY_NATIVE_SEND_MSG_SUFFIX}"
 
 
+def gateway_native_battery(prefix: str) -> str:
+    return f"{prefix}/{GATEWAY_NATIVE_BATTERY_SUFFIX}"
+
+
+def gateway_native_telemetry(prefix: str) -> str:
+    return f"{prefix}/{GATEWAY_NATIVE_TELEMETRY_SUFFIX}"
+
+
+def gateway_native_advertisement(prefix: str) -> str:
+    return f"{prefix}/{GATEWAY_NATIVE_ADVERTISEMENT_SUFFIX}"
+
+
 __all__ = [
     "RPC_REQUEST",
     "RPC_RESPONSE_PREFIX",
@@ -84,6 +101,7 @@ __all__ = [
     "NODE_PREFIX",
     "BASE_PREFIX",
     "BASE_LOCATION",
+    "GATEWAY_NATIVE_PREFIX",
     "rpc_response_topic",
     "node_location_topic",
     "node_battery_topic",
@@ -91,4 +109,7 @@ __all__ = [
     "gateway_native_status",
     "gateway_native_direct_msg_filter",
     "gateway_native_send_msg",
+    "gateway_native_battery",
+    "gateway_native_telemetry",
+    "gateway_native_advertisement",
 ]

@@ -50,6 +50,11 @@ class MqttBus:
             self._client = client
             await client.subscribe(topics.GATEWAY_STATUS, qos=self._cfg.qos)
             await client.subscribe(topics.RPC_REQUEST, qos=self._cfg.qos)
+            _gw = topics.GATEWAY_NATIVE_PREFIX
+            await client.subscribe(topics.gateway_native_direct_msg_filter(_gw), qos=self._cfg.qos)
+            await client.subscribe(topics.gateway_native_battery(_gw), qos=self._cfg.qos)
+            await client.subscribe(topics.gateway_native_telemetry(_gw), qos=self._cfg.qos)
+            await client.subscribe(topics.gateway_native_advertisement(_gw), qos=self._cfg.qos)
             log.info(
                 "MQTT connected: %s:%s (client_id=%s, qos=%s)",
                 self._cfg.host, self._cfg.port,

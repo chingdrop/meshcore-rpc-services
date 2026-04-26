@@ -139,3 +139,46 @@ CREATE TABLE IF NOT EXISTS schema_version
 (
     version INTEGER NOT NULL
 );
+
+-- ---------------------------------------------------------------------------
+-- Node locations. One row per node; upserted on every location report.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS node_locations
+(
+    node_id TEXT PRIMARY KEY,
+    lat     REAL NOT NULL,
+    lon     REAL NOT NULL,
+    alt     REAL,
+    acc     REAL,
+    fix     INTEGER,
+    spd     REAL,
+    hdg     REAL,
+    ts      REAL NOT NULL,
+    source  TEXT,
+    rssi    INTEGER,
+    snr     REAL
+);
+CREATE INDEX IF NOT EXISTS idx_node_loc_ts ON node_locations (ts);
+
+-- ---------------------------------------------------------------------------
+-- Node battery. One row per node; upserted on every battery event.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS node_battery
+(
+    node_id TEXT PRIMARY KEY,
+    pct     INTEGER,
+    voltage REAL,
+    ts      REAL NOT NULL,
+    source  TEXT
+);
+
+-- ---------------------------------------------------------------------------
+-- Base state. Key-value store for base-station state (e.g. "location").
+-- value_json holds the full JSON object; ts is the wall time of last update.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS base_state
+(
+    key        TEXT PRIMARY KEY,
+    value_json TEXT NOT NULL,
+    ts         REAL NOT NULL
+);

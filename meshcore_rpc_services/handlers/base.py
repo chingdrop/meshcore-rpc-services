@@ -15,17 +15,20 @@ No Protocol types. Tests pass in real :class:`Store` instances pointed at
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Protocol
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Protocol
 
 from meshcore_rpc_services.persistence import Store
 from meshcore_rpc_services.schemas import Request, Response
+
+if TYPE_CHECKING:
+    from meshcore_rpc_services.state import StateAggregator
 
 
 @dataclass
 class HandlerContext:
     store: Store
-    # Zero-arg async callable returning {"status": str|None, "health": str|None}
     gateway_snapshot: Callable[[], Awaitable[dict[str, Any]]]
+    state: "StateAggregator"
 
 
 class Handler(Protocol):
