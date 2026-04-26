@@ -2,14 +2,14 @@
 
 Two groups live here:
 
-1. **Internal RPC contract** — the topics this service speaks publicly. These
+1. **Service contract** — the topics this service speaks publicly. These
    are the long-term, locked topics. Everything in the app layer references
    these constants; nobody hardcodes strings.
 
 2. **Gateway-native topics** — the topics the gateway emits/consumes today.
    We subscribe to these when we want raw visibility into gateway state. The
    transport adapter is responsible for translating between gateway-native
-   messages and the internal RPC contract.
+   messages and the service contract.
 
 If the gateway's topic shape ever changes, only :mod:`transport.adapter` and
 this file need to move. The rest of the codebase is insulated.
@@ -18,13 +18,18 @@ this file need to move. The rest of the codebase is insulated.
 from __future__ import annotations
 
 # -----------------------------------------------------------------------------
-# Internal RPC contract (long-term, locked)
+# Service contract (locked — mc/ prefix)
 # -----------------------------------------------------------------------------
 
-RPC_REQUEST = "meshcore/rpc/request"
-RPC_RESPONSE_PREFIX = "meshcore/rpc/response"
+RPC_REQUEST = "mc/rpc/req"
+RPC_RESPONSE_PREFIX = "mc/rpc/resp"
 
-GATEWAY_STATUS = "meshcore/gateway/status"
+GATEWAY_STATUS = "mc/gateway/status"
+SVC_HEALTH = "mc/svc/health"
+
+NODE_PREFIX = "mc/node"
+BASE_PREFIX = "mc/base"
+BASE_LOCATION = f"{BASE_PREFIX}/location"
 
 
 def rpc_response_topic(node_id: str) -> str:
@@ -32,6 +37,18 @@ def rpc_response_topic(node_id: str) -> str:
     if not node_id:
         raise ValueError("node_id must be non-empty")
     return f"{RPC_RESPONSE_PREFIX}/{node_id}"
+
+
+def node_location_topic(node_id: str) -> str:
+    return f"{NODE_PREFIX}/{node_id}/location"
+
+
+def node_battery_topic(node_id: str) -> str:
+    return f"{NODE_PREFIX}/{node_id}/battery"
+
+
+def node_state_topic(node_id: str) -> str:
+    return f"{NODE_PREFIX}/{node_id}/state"
 
 
 # -----------------------------------------------------------------------------
@@ -63,7 +80,14 @@ __all__ = [
     "RPC_REQUEST",
     "RPC_RESPONSE_PREFIX",
     "GATEWAY_STATUS",
+    "SVC_HEALTH",
+    "NODE_PREFIX",
+    "BASE_PREFIX",
+    "BASE_LOCATION",
     "rpc_response_topic",
+    "node_location_topic",
+    "node_battery_topic",
+    "node_state_topic",
     "gateway_native_status",
     "gateway_native_direct_msg_filter",
     "gateway_native_send_msg",

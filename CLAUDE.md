@@ -39,7 +39,7 @@ MqttBus → transport/adapter.py → core.process_request()
   2. router.resolve(request.type)     — map type string → Handler
   3. tracker.run_with_timeout()       — execute handler with TTL from policy
   4. store.record_event()             — append state to event log
-  5. emit(node_id, Response)          — publish to meshcore/rpc/response/<node_id>
+  5. emit(node_id, Response)          — publish to mc/rpc/resp/<node_id>
   6. store.record_completion()        — set final_state (completed_ok | completed_error)
 ```
 
@@ -47,8 +47,8 @@ MqttBus → transport/adapter.py → core.process_request()
 
 ### MQTT Contract
 
-- **Inbound**: `meshcore/rpc/request` — JSON `{v, id, type, from, ttl, args}`
-- **Outbound**: `meshcore/rpc/response/<node_id>` — JSON `{v, id, type, to, status, body|error}`
+- **Inbound**: `mc/rpc/req` — JSON `{v, id, type, from, ttl, args}`
+- **Outbound**: `mc/rpc/resp/<node_id>` — JSON `{v, id, type, to, status, body|error}`
 - Error codes: `bad_request`, `unknown_type`, `duplicate`, `timeout`, `internal`
 
 ### Key Modules

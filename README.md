@@ -9,12 +9,16 @@ structured responses. It never talks to LoRa hardware.
 
 ## MQTT contract (v1)
 
-| Direction | Topic                                | Notes                        |
-|-----------|--------------------------------------|------------------------------|
-| in        | `meshcore/rpc/request`               | RPC requests                 |
-| out       | `meshcore/rpc/response/<node_id>`    | One topic per node           |
-| in        | `meshcore/gateway/status` (retained) | Cached in memory + persisted |
-| in        | `meshcore/gateway/health` (retained) | Cached in memory + persisted |
+| Direction | Topic                             | Notes                        |
+|-----------|-----------------------------------|------------------------------|
+| in        | `mc/rpc/req`                      | RPC requests                 |
+| out       | `mc/rpc/resp/<node_id>`           | One topic per node           |
+| in        | `mc/gateway/status` (retained)    | Cached in memory + persisted |
+| out       | `mc/svc/health` (retained)        | Service liveness             |
+| out       | `mc/node/<id>/location` (retained)| Per-node GPS fix             |
+| out       | `mc/node/<id>/battery` (retained) | Per-node battery             |
+| out       | `mc/node/<id>/state` (retained)   | Per-node online/seen summary |
+| out       | `mc/base/location` (retained)     | Base station GPS fix         |
 
 All topic strings live in `meshcore_rpc_services/mqtt/topics.py`. Don't
 hardcode them elsewhere.
@@ -89,21 +93,22 @@ Pass `args.echo` (≤ 64 chars) to get it reflected back alongside `msg`:
 ### `gateway.status`
 
 ```json
-{ "gw": "connected", "hb": "ok", "snap_age_s": 42, "pending": 1, "ok": 18, "err": 2, "to": 0 }
+{ "state": "connected", "detail": null, "since": 1714000000.0, "snap_age_s": 42, "pending": 1, "ok": 18, "err": 2, "to": 0 }
 ```
 
 | Field        | Type       | Description                                                            |
 |--------------|------------|------------------------------------------------------------------------|
-| `gw`         | string     | Last retained `meshcore/gateway/status` value, or `"unknown"`          |
-| `hb`         | string     | Last retained `meshcore/gateway/health` value, or `"unknown"`          |
+| `state`      | string     | Last retained `mc/gateway/status` state field, or `"unknown"`          |
+| `detail`     | string/null| Optional detail string from the gateway status message                 |
+| `since`      | float/null | Unix timestamp when the gateway entered this state                     |
 | `snap_age_s` | int / null | Seconds since cache was last updated; `null` if no message received yet |
 | `pending`    | int        | Requests with no `final_state` yet                                     |
 | `ok`         | int        | `completed_ok` count (all time)                                        |
 | `err`        | int        | `completed_error` count (all time)                                     |
 | `to`         | int        | Timeout count (all time)                                               |
 
-When `snap_age_s` is `null` the gateway cache is cold — `gw` and `hb` should
-be treated as unknown regardless of their string values.
+When `snap_age_s` is `null` the gateway cache is cold — `state` should
+be treated as unknown regardless of its value.
 
 ### `node.last_seen`
 
@@ -182,8 +187,8 @@ retention.py      periodic cleanup task
 The service wires these together:
 
 ```
-MqttBus  ──subscribes──>  meshcore/rpc/request
-   │                      meshcore/gateway/{status,health}  (retained → cached + persisted)
+MqttBus  ──subscribes──>  mc/rpc/req
+   │                      mc/gateway/status  (retained → cached + persisted)
    │
    ▼
 Service._handle_one(msg.payload)
@@ -248,7 +253,7 @@ python scripts/send_request.py --type time.now --from mynode
 Seed retained gateway status so `gateway.status` returns something:
 
 ```bash
-python scripts/seed_gateway_status.py --status connected --health ok
+python scripts/seed_gateway_status.py --state connected
 python scripts/send_request.py --type gateway.status --from mynode
 ```
 

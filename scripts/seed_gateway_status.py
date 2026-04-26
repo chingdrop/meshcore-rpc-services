@@ -17,7 +17,7 @@ import time
 
 import paho.mqtt.client as mqtt
 
-GATEWAY_STATUS = "meshcore/gateway/status"
+GATEWAY_STATUS = "mc/gateway/status"
 
 
 def main() -> int:

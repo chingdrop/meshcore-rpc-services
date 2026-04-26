@@ -13,7 +13,7 @@ def _bytes(obj) -> bytes:
 
 def test_valid_request_round_trips():
     env = inbound_to_request(
-        topic="meshcore/rpc/request",
+        topic="mc/rpc/req",
         raw_payload=_bytes(
             {"v": 1, "id": "a", "type": "ping", "from": "n1", "ttl": 10}
         ),
@@ -26,7 +26,7 @@ def test_valid_request_round_trips():
 
 def test_bad_json_is_silently_dropped():
     env = inbound_to_request(
-        topic="meshcore/rpc/request", raw_payload=b"not-json"
+        topic="mc/rpc/req", raw_payload=b"not-json"
     )
     assert env.request is None
     assert env.error_response is None
@@ -34,7 +34,7 @@ def test_bad_json_is_silently_dropped():
 
 def test_schema_error_with_addressable_sender_emits_bad_request():
     env = inbound_to_request(
-        topic="meshcore/rpc/request",
+        topic="mc/rpc/req",
         raw_payload=_bytes({"v": 1, "id": "x", "from": "n1"}),  # missing 'type'
     )
     assert env.request is None
@@ -47,7 +47,7 @@ def test_schema_error_with_addressable_sender_emits_bad_request():
 
 def test_schema_error_without_addressable_sender_is_dropped():
     env = inbound_to_request(
-        topic="meshcore/rpc/request",
+        topic="mc/rpc/req",
         raw_payload=_bytes({"v": 1}),  # no id, no from
     )
     assert env.request is None
@@ -56,7 +56,7 @@ def test_schema_error_without_addressable_sender_is_dropped():
 
 def test_non_object_payload_is_dropped():
     env = inbound_to_request(
-        topic="meshcore/rpc/request",
+        topic="mc/rpc/req",
         raw_payload=_bytes([1, 2, 3]),
     )
     assert env.request is None

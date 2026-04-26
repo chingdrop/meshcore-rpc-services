@@ -23,8 +23,8 @@ from typing import Any
 
 import paho.mqtt.client as mqtt
 
-RPC_REQUEST_TOPIC = "meshcore/rpc/request"
-RPC_RESPONSE_PREFIX = "meshcore/rpc/response"
+RPC_REQUEST_TOPIC = "mc/rpc/req"
+RPC_RESPONSE_PREFIX = "mc/rpc/resp"
 
 
 def main() -> int:
