@@ -12,12 +12,17 @@ Failure handling:
   * We do not buffer beyond a small in-memory queue. A bridge that can't
     talk to TAK for an hour shouldn't fill a disk; the retained MQTT
     topics are the source of truth, not us.
+  * On reconnect (e.g. after a WireGuard tunnel flap on Starlink/cellular),
+    the optional `on_reconnect` callback lets the bridge drop any stale
+    queued events and emit a fresh CoT for the current state — so ATAK
+    sees the latest position immediately, not a backlog of slightly-old
+    ones.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 log = logging.getLogger(__name__)
 
@@ -28,12 +33,19 @@ _QUEUE_CAP = 256
 
 
 class TakSink:
-    def __init__(self, host: str, port: int) -> None:
+    def __init__(
+            self,
+            host: str,
+            port: int,
+            on_reconnect: Optional[Callable[[], Awaitable[None]]] = None,
+    ) -> None:
         self._host = host
         self._port = port
+        self._on_reconnect = on_reconnect
         self._queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=_QUEUE_CAP)
         self._task: Optional[asyncio.Task] = None
         self._stop = asyncio.Event()
+        self._was_connected = False
 
     def start(self) -> None:
         if self._task is None or self._task.done():
@@ -91,6 +103,28 @@ class TakSink:
         log.info("TAK connecting to %s:%d", self._host, self._port)
         reader, writer = await asyncio.open_connection(self._host, self._port)
         log.info("TAK connected")
+
+        # On reconnect (not first start), drop any backlog and let the bridge
+        # emit fresh CoT for everything it currently knows about. After a
+        # tunnel outage, ATAK should see current positions, not a queue of
+        # 5-minute-old positions immediately superseded by the next heartbeat.
+        if self._was_connected:
+            drained = 0
+            while True:
+                try:
+                    self._queue.get_nowait()
+                    drained += 1
+                except asyncio.QueueEmpty:
+                    break
+            if drained > 0:
+                log.info("Dropped %d stale CoT events on reconnect", drained)
+            if self._on_reconnect is not None:
+                try:
+                    await self._on_reconnect()
+                except Exception:
+                    log.exception("on_reconnect callback raised")
+        self._was_connected = True
+
         try:
             while not self._stop.is_set():
                 # Wait for an outbound event with a timeout so the loop

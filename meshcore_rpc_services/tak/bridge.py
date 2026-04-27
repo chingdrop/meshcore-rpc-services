@@ -46,7 +46,14 @@ _BASE_KEY = "__base__"
 class Bridge:
     def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
-        self._sink = TakSink(cfg.tak.server.host, cfg.tak.server.port)
+        # Pass `_republish_all` as the reconnect callback so that, after a
+        # tunnel flap, ATAK gets fresh CoT for everything we currently
+        # know about — not a backlog of stale events.
+        self._sink = TakSink(
+            cfg.tak.server.host,
+            cfg.tak.server.port,
+            on_reconnect=self._republish_all,
+        )
         # In-memory state: node_id → dict with at least {lat, lon, ts}.
         # `__base__` holds the home base.
         self._state: Dict[str, Dict[str, Any]] = {}
@@ -159,10 +166,19 @@ class Bridge:
         try:
             while not self._stop.is_set():
                 await asyncio.sleep(self._cfg.tak.publish_interval_s)
-                for key in list(self._state.keys()):
-                    await self._publish_one(key)
+                await self._republish_all()
         except asyncio.CancelledError:
             return
+
+    async def _republish_all(self) -> None:
+        """Emit a fresh CoT for every entity currently in state.
+
+        Called by the heartbeat on a timer, and by TakSink on reconnect
+        (so ATAK sees current state immediately after a tunnel flap
+        rather than waiting up to publish_interval_s for the next tick).
+        """
+        for key in list(self._state.keys()):
+            await self._publish_one(key)
 
     async def _publish_one(self, key: str) -> None:
         record = self._state.get(key)
