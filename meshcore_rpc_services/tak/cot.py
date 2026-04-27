@@ -109,3 +109,37 @@ def build_cot(
 
     xml = ET.tostring(event, encoding="utf-8", xml_declaration=False)
     return xml + b"\n"
+
+
+def build_drop_cot(*, uid: str, cot_type: str, lat: float, lon: float) -> bytes:
+    """Build a CoT 'drop track' event.
+
+    Setting stale before start signals ATAK to immediately remove the marker.
+    """
+    now = datetime.now(timezone.utc)
+    stale = now - timedelta(seconds=1)
+    event = ET.Element(
+        "event",
+        {
+            "version": "2.0",
+            "uid": uid,
+            "type": cot_type,
+            "how": "m-g",
+            "time": _isoz(now),
+            "start": _isoz(now),
+            "stale": _isoz(stale),
+        },
+    )
+    ET.SubElement(
+        event,
+        "point",
+        {
+            "lat": f"{lat:.7f}",
+            "lon": f"{lon:.7f}",
+            "hae": "9999999.0",
+            "ce": "9999999.0",
+            "le": "9999999.0",
+        },
+    )
+    ET.SubElement(event, "detail")
+    return ET.tostring(event, encoding="utf-8", xml_declaration=False) + b"\n"

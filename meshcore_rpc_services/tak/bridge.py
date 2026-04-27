@@ -27,7 +27,7 @@ import aiomqtt
 
 from meshcore_rpc_services.config import AppConfig
 from meshcore_rpc_services.mqtt import topics
-from .cot import build_cot
+from .cot import build_cot, build_drop_cot
 from .takserver import TakSink
 
 log = logging.getLogger(__name__)
@@ -57,6 +57,9 @@ class Bridge:
         # In-memory state: node_id → dict with at least {lat, lon, ts}.
         # `__base__` holds the home base.
         self._state: Dict[str, Dict[str, Any]] = {}
+        # node_id → wall-clock time when the node first appeared offline.
+        # Cleared when the node comes back online.
+        self._offline_since: Dict[str, float] = {}
         self._stop = asyncio.Event()
 
     async def run(self) -> None:
@@ -137,6 +140,7 @@ class Bridge:
             node_id = _extract_node_id(topic, "/state")
             if node_id:
                 self._merge_state(node_id, data, kind="node")
+                self._update_offline_tracking(node_id, data)
         else:
             return
 
@@ -166,6 +170,7 @@ class Bridge:
         try:
             while not self._stop.is_set():
                 await asyncio.sleep(self._cfg.tak.publish_interval_s)
+                await self._evict_long_offline()
                 await self._republish_all()
         except asyncio.CancelledError:
             return
@@ -179,6 +184,46 @@ class Bridge:
         """
         for key in list(self._state.keys()):
             await self._publish_one(key)
+
+    def _update_offline_tracking(self, node_id: str, data: dict) -> None:
+        online = data.get("online")
+        if online is True:
+            self._offline_since.pop(node_id, None)
+        elif online is False:
+            if node_id not in self._offline_since:
+                self._offline_since[node_id] = time.time()
+
+    async def _evict_long_offline(self) -> None:
+        threshold = self._cfg.tak.remove_after_offline_s
+        if threshold <= 0:
+            return
+        now = time.time()
+        to_evict = [
+            nid for nid, since in self._offline_since.items()
+            if (now - since) >= threshold
+        ]
+        for node_id in to_evict:
+            await self._publish_drop(node_id)
+            self._state.pop(node_id, None)
+            self._offline_since.pop(node_id, None)
+            log.info("Evicted long-offline node %s from bridge state", node_id)
+
+    async def _publish_drop(self, node_id: str) -> None:
+        record = self._state.get(node_id)
+        if not record:
+            return
+        lat = record.get("lat")
+        lon = record.get("lon")
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            return
+        is_base = node_id == _BASE_KEY
+        cot_type = (
+            self._cfg.tak.base_cot_type if is_base
+            else self._cfg.tak.field_node_cot_type
+        )
+        uid = f"meshcore.{'base' if is_base else node_id}"
+        drop_xml = build_drop_cot(uid=uid, cot_type=cot_type, lat=float(lat), lon=float(lon))
+        await self._sink.send(drop_xml)
 
     async def _publish_one(self, key: str) -> None:
         record = self._state.get(key)

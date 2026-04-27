@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import subprocess
 import time
 from typing import Optional
 
@@ -74,6 +75,32 @@ def _extract_radio_metadata(
         snr = float(snr_raw)
 
     return rssi, snr
+
+
+async def _vcgencmd_power_ok() -> Optional[bool]:
+    """Return True if Pi power is healthy, False if throttled, None if unavailable.
+
+    Runs `vcgencmd get_throttled` in a thread. Returns None on non-Pi hosts
+    where vcgencmd is absent.
+    """
+    def _run() -> Optional[bool]:
+        try:
+            result = subprocess.run(
+                ["vcgencmd", "get_throttled"],
+                capture_output=True, text=True, timeout=2,
+            )
+            # Output: "throttled=0x0" — any non-zero value means some
+            # form of undervoltage, frequency capping, or thermal throttle.
+            out = result.stdout.strip()
+            if out.startswith("throttled="):
+                return out == "throttled=0x0"
+        except FileNotFoundError:
+            pass  # not a Pi
+        except Exception as exc:
+            log.debug("vcgencmd check failed: %s", exc)
+        return None
+
+    return await asyncio.to_thread(_run)
 
 
 class Service:
@@ -148,7 +175,11 @@ class Service:
             self._store.close()
 
     async def _publish_health(self, state: str) -> None:
-        payload = json.dumps({"state": state, "ts": time.time()}).encode("utf-8")
+        data: dict = {"state": state, "ts": time.time()}
+        power_ok = await _vcgencmd_power_ok()
+        if power_ok is not None:
+            data["power_ok"] = power_ok
+        payload = json.dumps(data).encode("utf-8")
         await self._bus.publish(topics.SVC_HEALTH, payload, retain=True)
 
     async def _heartbeat(self) -> None:

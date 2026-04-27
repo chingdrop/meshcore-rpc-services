@@ -95,6 +95,9 @@ class TakBridgeConfig(BaseModel):
     base_cot_type: str = "a-f-G-U-C-I"
     publish_interval_s: float = 10.0
     stale_after_s: int = 300
+    # How long a node must be continuously offline before the bridge emits a
+    # CoT "drop track" event and removes it from state. Set to 0 to disable.
+    remove_after_offline_s: int = 600
 
 
 class AppConfig(BaseSettings):

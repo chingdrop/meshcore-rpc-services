@@ -56,6 +56,17 @@ journalctl. Each has a single config file in `/etc/`. State lives under
 - microSD card (16GB+)
 - RAK4631 + RAK19007 connected via USB
 - Optional: RAK12501 GNSS module connected to the Pi (not the field node)
+- **Power supply:** official Pi 4 USB-C adapter (5.1V/≥3A) or equivalent.
+  Thin USB cables or cheap adapters cause undervoltage throttling that
+  degrades serial reliability and slows the CPU. Use ≥20 AWG cable and
+  check for throttle events after first boot:
+  ```bash
+  vcgencmd get_throttled
+  # healthy: throttled=0x0
+  # anything else: replace the supply or cable before deploying
+  ```
+  The `mc/svc/health` MQTT topic includes a `power_ok` field (true/false)
+  when running on a Pi, so you can monitor this remotely.
 
 **OS:** Ubuntu Server 22.04 LTS or Raspberry Pi OS bookworm. Both have
 Python 3.10+ and a recent enough mosquitto package. Older OSes may work
@@ -98,6 +109,16 @@ through these by hand.
 sudo apt update
 sudo apt install -y mosquitto mosquitto-clients python3 python3-venv python3-pip
 sudo systemctl enable --now mosquitto
+```
+
+Add autosave settings to `/etc/mosquitto/mosquitto.conf` so retained
+messages survive a broker crash rather than just a clean shutdown:
+
+```
+persistence true
+persistence_location /var/lib/mosquitto/
+autosave_on_changes true
+autosave_interval 30
 ```
 
 Verify mosquitto is up:
@@ -476,9 +497,21 @@ journalctl -u meshcore-mqtt -u meshcore-rpc-services -u meshcore-tak-bridge \
     --since '6 hours ago'
 ```
 
-Common: a kernel update changed how the USB serial device gets named
-and the udev rule needs adjusting (re-check `udevadm info -a`), or the
-system clock is off and the radio's time-based ACKs are misbehaving.
+Common causes:
+
+- **Kernel 6.12 CDC-ACM regression.** Kernel 6.12.47 (and several adjacent
+  point releases) has a known regression where CDC-ACM devices (`/dev/ttyACM*`)
+  fail to enumerate — `dmesg` shows the device connecting but no node appears
+  in `/dev/`. The gateway service will report
+  `[Errno 2] No such file or directory: '/dev/meshcore-gateway'`.
+  Workaround: pin to a known-good kernel (e.g. 6.11.x or 6.13.x) or use
+  the latest LTS point release. Check your kernel version with `uname -r`
+  and compare against known-bad releases in the Ubuntu/Debian changelogs.
+
+- A kernel update changed how the USB serial device gets named and the
+  udev rule needs adjusting (re-check `udevadm info -a`).
+
+- The system clock is off and the radio's time-based ACKs are misbehaving.
 
 ### Resetting state without reinstalling
 
