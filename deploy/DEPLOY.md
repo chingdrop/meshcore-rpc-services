@@ -51,6 +51,7 @@ journalctl. Each has a single config file in `/etc/`. State lives under
 ## Prerequisites
 
 **Hardware:**
+
 - Raspberry Pi 4 (2GB+ is plenty)
 - microSD card (16GB+)
 - RAK4631 + RAK19007 connected via USB
@@ -100,9 +101,11 @@ sudo systemctl enable --now mosquitto
 ```
 
 Verify mosquitto is up:
+
 ```bash
 mosquitto_sub -t '$SYS/#' -C 1
 ```
+
 You should see a single broker stats message. If not, mosquitto isn't
 running.
 
@@ -135,6 +138,7 @@ The second install gives you both `meshcore-rpc-services` and
 they share a wheel.
 
 Verify the binaries exist:
+
 ```bash
 ls /opt/meshcore-mqtt/venv/bin/meshcore-mqtt
 ls /opt/meshcore-rpc-services/venv/bin/meshcore-rpc-services
@@ -319,6 +323,7 @@ mosquitto_sub -h localhost -t '#' -v
 ```
 
 You should see, in order:
+
 1. The gateway's retained `meshcore/status` and `mc/gateway/status`
 2. The service's retained `mc/svc/health`
 3. If the base is configured: retained `mc/base/location`
@@ -490,7 +495,152 @@ as nodes report in.
 
 ---
 
-## Field operation notes
+## Reaching a remote TAK Server (WireGuard / cellular / Starlink)
+
+If your TAK Server is at home and the Pi is in the field, the typical
+path is: Pi → cellular hotspot or Starlink → public internet → WireGuard
+tunnel → home network → TAK Server.
+
+The bridge doesn't care that the route goes over a tunnel. As far as it
+knows, the TAK Server is at some IP. Configure that IP in
+`tak.server.host` and the bridge connects to it. The OS handles the
+rest.
+
+### Setting up WireGuard on the Pi
+
+```bash
+sudo apt install wireguard
+```
+
+Create `/etc/wireguard/wg0.conf` with your tunnel config:
+
+```ini
+[Interface]
+PrivateKey = <pi's private key>
+Address = 10.7.0.10/24
+# Optional: route only TAK traffic through the tunnel, not all egress.
+# Without this, the entire Pi sends DNS/NTP/etc. through wg0, which
+# eats Starlink/cellular bandwidth.
+
+[Peer]
+PublicKey = <home wg server's public key>
+Endpoint = <your home public IP or DDNS>:51820
+# Only route the home subnet through the tunnel. The Pi reaches the
+# TAK Server at 10.7.0.5 over wg0; everything else goes out the
+# regular default route (Starlink dish).
+AllowedIPs = 10.7.0.0/24
+PersistentKeepalive = 25
+```
+
+Bring it up at boot:
+
+```bash
+sudo systemctl enable --now wg-quick@wg0
+```
+
+Verify the route:
+
+```bash
+ip route get 10.7.0.5     # should show "dev wg0"
+ping -c 3 10.7.0.5
+```
+
+Then point the bridge at the WireGuard IP:
+
+```yaml
+# /etc/meshcore-rpc-services/config.yaml
+tak:
+  server:
+    host: 10.7.0.5
+    port: 8087
+```
+
+`sudo systemctl restart meshcore-tak-bridge` and watch the log:
+
+```bash
+journalctl -u meshcore-tak-bridge -f
+```
+
+You should see `TAK connecting to 10.7.0.5:8087` followed by `TAK connected`.
+
+### What happens when the tunnel flaps
+
+Starlink fades briefly several times an hour. Cellular drops cells when
+the Pi moves between towers. Either way, expect the tunnel to go down
+and come back up — sometimes for seconds, sometimes for minutes.
+
+The bridge handles this:
+
+1. The TCP connection to the TAK Server breaks (visible as
+   `TAK connection ended: ...` in the log).
+2. The bridge reconnects with exponential backoff (1s → 2s → 5s → 10s →
+   30s, capped at 30s).
+3. On successful reconnect, the bridge **drops any backlog** of CoT
+   events that piled up during the outage and emits a fresh CoT for
+   every entity in its current state.
+
+Why drop the backlog? Because ATAK only cares about *current* position.
+Replaying 5 minutes of slightly-old positions would cause markers to
+jump around briefly until the next heartbeat caught up. Better to send
+the present state as soon as we can talk to the server again.
+
+The retained MQTT state on the Pi is unaffected — the gateway and RPC
+service keep working through the outage; only the TAK side is
+disconnected. When the bridge reconnects, it re-emits whatever was on
+the retained topics at that moment.
+
+### Choosing routing scope
+
+Two valid choices for `AllowedIPs` on the Pi side:
+
+- **`10.7.0.0/24`** (or whatever your home subnet is): only TAK traffic
+  goes through the tunnel. Everything else (DNS, NTP, etc.) uses the
+  default route. **Recommended.** This is the simpler, more debuggable
+  setup, and it's correct for both Starlink and cellular.
+- **`0.0.0.0/0`**: all egress traffic goes through the tunnel. The Pi
+  is effectively on your home network. Don't do this unless you have
+  a specific reason to. Two specific risks:
+    - DNS for your WireGuard endpoint hostname (e.g. `home.example.com`)
+      must resolve *before* wg0 comes up, otherwise you've created a
+      chicken-and-egg failure on cold boot. Use a hardcoded `Endpoint`
+      IP, or a separate name server outside the tunnel.
+    - All your home's egress filtering applies to the Pi. If your home
+      blocks something, the Pi can't reach it either.
+
+### Bandwidth and CoT volume
+
+CoT-over-TCP on this stack is small. Per-event size: ~400 bytes. With
+default heartbeat of 10s and 5 nodes, that's:
+
+```
+6 entities × 1 event/10s × 400 bytes = 240 bytes/s ≈ 21 MB/day
+```
+
+Well under any cellular plan's overage threshold. Starlink is unlimited
+for this kind of traffic.
+
+If you want to cut it further, raise `tak.publish_interval_s` to 30 or
+60 seconds. CoT staleness handles the rest — markers don't disappear
+between heartbeats.
+
+### Latency
+
+WireGuard adds 1-2ms on a wired LAN. Over Starlink, expect 30-50ms; over
+cellular, 50-150ms. None of this matters for ATAK markers, which update
+on the order of seconds. It would matter for an inverse channel (TAK →
+field commands) but the bridge is one-way so it's a non-issue.
+
+### When to NOT use a tunnel
+
+If you're operating without internet at all (deep field, no Starlink),
+the TAK Server cannot be at home. Two options:
+
+1. Run a TAK Server alongside the Pi (or on the Pi itself) and connect
+   ATAK clients to it directly over Wi-Fi. Out of scope for this guide
+   but doable.
+2. Skip the bridge entirely and operate from the retained MQTT topics.
+   `mosquitto_sub -t 'mc/node/+/state' -v` is a perfectly serviceable
+   tactical display in a pinch.
 
 A few things that matter when you're not in the lab:
 
@@ -516,6 +666,7 @@ machine on the same network: `ssh meshcore-pi journalctl -u meshcore-mqtt -f`.
 
 **Time sync.** With no internet, NTP can't sync. The Pi's clock will
 drift. Without a fix:
+
 - `time.now` responses get inaccurate
 - `last_seen_age_s` calculations stay correct (they're relative)
 - TAK CoT timestamps drift, which might confuse ATAK clients
